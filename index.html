@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1f3b30">
+<title>競馬ABC予想 記録帳</title>
+<style>
+  :root{
+    --felt:#1f3b30; --paper:#f4f1e6; --paper2:#eae5d2; --green:#0a6b3c;
+    --greenD:#064d2b; --red:#c8321f; --gold:#9a7b16; --jade:#2f7d57;
+    --ink:#1c2620; --faint:#7c8478; --rule:#cfc8b0;
+    --mono:'SF Mono','Roboto Mono',ui-monospace,monospace;
+    --sans:'Hiragino Sans','Yu Gothic',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--felt);color:var(--ink);font-family:var(--mono);
+    background-image:radial-gradient(rgba(255,255,255,.025) 1px,transparent 1px);background-size:4px 4px;
+    -webkit-text-size-adjust:100%;}
+  .wrap{max-width:880px;margin:0 auto;padding:26px 16px 90px;}
+  .ticket{position:relative;background:var(--paper);box-shadow:0 4px 12px rgba(0,0,0,.25);margin-bottom:14px;}
+  .ticket::before,.ticket::after{content:"";position:absolute;left:0;right:0;height:8px;
+    background-image:radial-gradient(circle,var(--felt) 2.2px,transparent 2.6px);
+    background-size:12px 8px;background-position:center;}
+  .ticket::before{top:0;} .ticket::after{bottom:0;}
+  h1{font-size:clamp(22px,6vw,30px);font-weight:800;margin:4px 0 0;color:var(--greenD);
+    letter-spacing:.06em;white-space:nowrap;font-family:var(--sans);}
+  .kicker{font-size:10px;letter-spacing:.4em;color:var(--green);font-weight:700;}
+  .dash{border-top:1px dashed var(--rule);margin:14px 0 12px;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));}
+  .stat{text-align:center;padding:4px 6px;border-right:1px dashed var(--rule);}
+  .stat:last-child{border-right:none;}
+  .stat .l{font-size:9.5px;color:var(--faint);}
+  .stat .v{font-size:18px;font-weight:800;margin-top:2px;color:var(--greenD);}
+  button{font-family:var(--mono);cursor:pointer;}
+  .btn-solid{background:var(--green);color:var(--paper);border:none;padding:8px 16px;font-size:13px;font-weight:800;}
+  .btn-ghost{background:transparent;color:var(--greenD);border:1px solid var(--rule);padding:7px 12px;font-weight:700;font-size:12px;}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;}
+  .filters button{background:transparent;color:var(--paper);border:1px solid rgba(255,255,255,.35);padding:6px 13px;font-size:12px;font-weight:700;}
+  .filters button.on{background:var(--paper);color:var(--greenD);border-color:var(--paper);}
+  .row-head{display:flex;align-items:center;gap:12px;padding:16px 16px 14px;cursor:pointer;}
+  .r-date{font-size:10px;color:var(--green);letter-spacing:.15em;margin-bottom:3px;}
+  .r-name{font-size:16px;font-weight:800;color:var(--greenD);font-family:var(--sans);}
+  .r-sub{font-size:11px;color:var(--faint);margin-top:3px;}
+  .grade{font-size:12px;color:var(--faint);margin-left:6px;}
+  .hit{color:var(--red);font-weight:800;font-size:13px;border:2px solid var(--red);border-radius:4px;padding:2px 8px;transform:rotate(-7deg);letter-spacing:.1em;}
+  .stamp{font-weight:800;border-radius:5px;transform:rotate(-7deg);letter-spacing:.1em;white-space:nowrap;display:inline-block;}
+  .stamp-man{font-size:13px;padding:2px 8px;color:#7a7f88;border:2px solid #9aa0aa;background:linear-gradient(135deg,#f4f5f7,#d8dbe0,#f4f5f7);}
+  .stamp-10man{font-size:13px;padding:2px 8px;color:#7a5c00;border:2px solid #d4af37;background:linear-gradient(135deg,#fff8dc,#f5d97a,#fff8dc);box-shadow:0 0 6px rgba(212,175,55,.7);}
+  .hanamaru{font-size:22px;line-height:1;}
+  .hanamaru-lux{font-size:30px;line-height:1;filter:drop-shadow(0 0 3px rgba(212,175,55,.9));}
+  .stamprow{display:flex;align-items:center;gap:4px;}
+  .award{font-size:10px;font-weight:800;border-radius:3px;padding:1px 6px;letter-spacing:.05em;white-space:nowrap;display:inline-block;}
+  .stampwrap{display:flex;flex-direction:column;gap:3px;align-items:flex-end;}
+  .miss{color:var(--faint);font-size:12px;} .pend{color:var(--faint);font-size:11px;}
+  .body{border-top:1px dashed var(--rule);padding:16px;display:flex;flex-direction:column;gap:14px;}
+  .alert{display:flex;gap:8px;align-items:flex-start;background:var(--paper2);padding:8px 10px;font-size:12.5px;}
+  .cap{font-size:10px;color:var(--faint);letter-spacing:.12em;margin-bottom:6px;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .chip{border:1px solid var(--faint);padding:4px 7px;font-size:11px;display:flex;gap:5px;align-items:center;background:var(--paper2);}
+  .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
+  .plan{border:1px solid var(--rule);padding:8px;}
+  .plan .pl-l{font-size:11px;font-weight:800;margin-bottom:5px;color:var(--green);}
+  .plan .h{font-size:12px;color:var(--ink);}
+  .field .fv{font-size:13px;white-space:pre-wrap;color:var(--ink);}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .barcode{display:flex;align-items:flex-end;gap:1.5px;height:26px;opacity:.55;margin-top:2px;}
+  .barcode div{background:var(--ink);height:100%;}
+  input,textarea,select{background:#fbf9f0;border:1px solid var(--rule);color:var(--ink);padding:8px 10px;
+    font-size:13px;font-family:var(--mono);width:100%;box-sizing:border-box;}
+  textarea{resize:vertical;}
+  .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;}
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;}
+  label.chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);}
+  label.chk input{width:auto;}
+  .errbar{color:var(--paper);background:var(--red);font-size:13px;margin-bottom:12px;padding:8px 12px;}
+  .empty{color:var(--paper);font-size:13px;text-align:center;padding:40px 0;border:1px dashed rgba(255,255,255,.3);}
+  .barL{width:4px;align-self:stretch;}
+  .actions{display:flex;gap:8px;}
+  .hint{font-size:11px;color:var(--faint);line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+/* ===== 定数 ===== */
+var GOLD="#9a7b16",JADE="#2f7d57",RED="#c8321f",GREEN="#0a6b3c",FAINT="#7c8478",GOLDL="#9a7b16";
+var KEY="abc-races";
+
+/* ===== データ ===== */
+function blank(){return{id:"",date:"",track:"",raceNumber:"",raceName:"",grade:"",trackCondition:"",
+  a:"",b:"",c:"",mispriceNote:"",hot:false,betType:"三連複",betCombos:"",betAmount:"",
+  resultOrder:"",resultStatus:"pending",payout:"",memo:"",
+  decisionType:null,surface:"",distance:"",award:""};}
+
+var SEED=[];
+
+var state={races:[],filter:"all",editing:null,form:blank(),open:null,err:"",pasteOpen:false,pasteText:"",analysisOpen:false,catFilter:"all",typeFilter:"all",limit:20};
+
+function load(){
+  try{var raw=localStorage.getItem(KEY);
+    if(raw){state.races=JSON.parse(raw);}
+    else{state.races=SEED.slice();}
+  }catch(e){state.races=SEED.slice();}
+}
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(state.races));state.err="";return true;}
+  catch(e){state.err="保存に失敗。容量超過かプライベートモードかも。『ファイルに書き出し』でバックアップを。";return false;}
+}
+
+/* ===== ロジック ===== */
+function parseHorses(t){
+  if(!t)return[];
+  return t.split(/[,、\n]/).map(function(s){return s.trim();}).filter(Boolean).map(function(s){
+    var p=s.split(/[:：]/).map(function(x){return x.trim();});
+    return{number:p[0]||"",name:p[1]||"",ninki:p[2]||""};
+  }).filter(function(h){return h.number;});
+}
+function ninkiNum(v){var n=parseInt(v,10);return isNaN(n)?null:n;}
+function judge(a,b,c){
+  var map={};
+  function add(list,plan){list.forEach(function(h){
+    if(!map[h.number])map[h.number]={number:h.number,name:"",ninki:"",plans:{}};
+    var e=map[h.number];e.plans[plan]=1;
+    if(!e.name&&h.name)e.name=h.name;
+    if(!e.ninki&&h.ninki)e.ninki=h.ninki;
+  });}
+  add(a,"A");add(b,"B");add(c,"C");
+  return Object.keys(map).map(function(k){
+    var e=map[k];var plans=Object.keys(e.plans).sort();var count=plans.length;
+    var nk=ninkiNum(e.ninki);var cOnly=count===1&&plans[0]==="C";var tier;
+    if(count===3)tier="本線軸";
+    else if(count===2&&nk!==null&&nk>=6)tier="中穴ヒモ枠";
+    else if(count===2)tier="対抗ヒモ";
+    else if(cOnly&&nk!==null&&nk>=6)tier="3列目強制";
+    else tier="ヒモ候補";
+    return{number:e.number,name:e.name,ninki:e.ninki,plans:plans,count:count,tier:tier,nk:nk};
+  }).sort(function(x,y){return y.count-x.count||((x.nk||99)-(y.nk||99));});
+}
+function tierColor(t){return t==="本線軸"?GOLD:t==="中穴ヒモ枠"?JADE:t==="3列目強制"?RED:t==="対抗ヒモ"?GREEN:FAINT;}
+function esc(s){return(s==null?"":""+s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function yen(v){return"¥"+(parseFloat(v)||0).toLocaleString();}
+
+/* ===== 集計 ===== */
+function stats(){
+  var placed=state.races.filter(function(r){return r.hot&&r.resultStatus!=="pending";});
+  var hits=placed.filter(function(r){return r.resultStatus==="hit";});
+  var inv=placed.reduce(function(s,r){return s+(parseFloat(r.betAmount)||0);},0);
+  var ret=hits.reduce(function(s,r){return s+(parseFloat(r.payout)||0);},0);
+  // トリガミ=的中だが払戻<投資
+  var trigami=hits.filter(function(r){return (parseFloat(r.payout)||0) < (parseFloat(r.betAmount)||0);}).length;
+  return{total:state.races.length,placed:placed.length,hits:hits.length,
+    hitRate:placed.length?Math.round(hits.length/placed.length*100)+"%":"—",
+    roi:inv?Math.round(ret/inv*100)+"%":"—",pl:ret-inv,invZero:inv===0,roiNum:inv?ret/inv*100:0,
+    trigami:trigami};
+}
+
+/* 切り口別ROI集計。keyFnがnull/空を返すレコードは除外(補完しない) */
+function breakdown(keyFn,labelFn){
+  var placed=state.races.filter(function(r){return r.hot&&r.resultStatus!=="pending";});
+  var groups={};
+  placed.forEach(function(r){
+    var k=keyFn(r);
+    if(k===null||k===undefined||k==="")return; // 欠損は除外
+    k=""+k;
+    if(!groups[k])groups[k]={n:0,inv:0,ret:0,hits:0};
+    var g=groups[k];
+    g.n++;
+    g.inv+=(parseFloat(r.betAmount)||0);
+    if(r.resultStatus==="hit"){g.hits++;g.ret+=(parseFloat(r.payout)||0);}
+  });
+  return Object.keys(groups).sort(function(a,b){
+    var na=parseFloat(a),nb=parseFloat(b);
+    if(!isNaN(na)&&!isNaN(nb))return na-nb; // 数値キー(距離等)は数値順
+    return a<b?-1:a>b?1:0;                  // それ以外は辞書順
+  }).map(function(k){
+    var g=groups[k];
+    return{label:labelFn?labelFn(k):k,n:g.n,hits:g.hits,inv:g.inv,ret:g.ret,
+      roi:g.inv?Math.round(g.ret/g.inv*100):null};
+  });
+}
+var TYPE_LABEL={"1":"Type1（堅い・妙味なし）","2":"Type2（堅い軸＋妙味）","3":"Type3（割れ・複数妙味）","4":"Type4（上位堅い・順番不明）"};
+var JRA_TRACKS=["札幌","函館","福島","新潟","東京","中山","中京","京都","阪神","小倉"];
+function isJRA(r){return JRA_TRACKS.indexOf(r.track)>=0;}
+function isStakes(r){var g=(r.grade||"");return /G[1-3ⅠⅡⅢ]|Jpn|重賞/i.test(g);}
+function catMatch(r){
+  var f=state.catFilter;
+  if(f==="all")return true;
+  if(f==="jra")return isJRA(r);
+  if(f==="chiho")return !isJRA(r);
+  if(f==="stakes")return isStakes(r);
+  if(f.indexOf("track:")===0)return r.track===f.slice(6);
+  return true;
+}
+function typeMatch(r){
+  var f=state.typeFilter;
+  if(f==="all")return true;
+  if(f==="none")return r.decisionType==null;
+  return (""+r.decisionType)===f;
+}
+function setCat(v){state.catFilter=v;state.limit=20;render();}
+function setType(v){state.typeFilter=v;state.limit=20;render();}
+function catOptions(){
+  // 記録がある競馬場だけ動的に
+  var tracks={};state.races.forEach(function(r){if(r.track)tracks[r.track]=1;});
+  var tk=Object.keys(tracks).sort();
+  var opts=[["all","絞り込み: 全部"],["jra","JRA全体"],["chiho","地方全体"],["stakes","重賞のみ"]];
+  tk.forEach(function(t){opts.push(["track:"+t,"　競馬場: "+t]);});
+  return opts;
+}
+
+
+/* ===== レンダリング ===== */
+function chip(j){
+  return '<span class="chip" style="border-color:'+tierColor(j.tier)+'">'+
+    '<b style="color:'+tierColor(j.tier)+'">'+esc(j.number)+'</b>'+esc(j.name)+
+    '<span style="color:'+FAINT+'">['+j.plans.join("")+']</span>'+
+    (j.nk?'<span style="color:'+FAINT+'">'+j.nk+'番人気</span>':'')+
+    '<span style="color:'+tierColor(j.tier)+';font-size:10px">'+j.tier+'</span></span>';
+}
+function planCol(label,horses){
+  var hs=horses.length?horses.map(function(h){
+    return '<div class="h">'+esc(h.number)+' '+esc(h.name)+(h.ninki?' <span style="color:'+FAINT+'">'+esc(h.ninki)+'番人気</span>':'')+'</div>';
+  }).join(""):'<div class="h" style="color:'+FAINT+'">—</div>';
+  return '<div class="plan"><div class="pl-l">'+label+'</div>'+hs+'</div>';
+}
+function barcode(){
+  var w="3121132231121322312113223111322312".split("");
+  return '<div class="barcode">'+w.map(function(x){return '<div style="width:'+x+'px"></div>';}).join("")+
+    '<span style="font-size:9px;color:'+FAINT+';margin-left:6px;letter-spacing:.2em">ABC-LEDGER</span></div>';
+}
+var AWARD_DEF={
+  "kaishin":["★会心","ABCが完璧に噛み合った会心の的中","#a6332a"],
+  "myomi":["妙味的中","過小評価のミスプライス軸が来た","#0a6b3c"],
+  "teppan":["鉄板","Type2本線でカッチリ獲った","#9a7b16"],
+  "ooana":["大穴","人気薄を読んで獲った高配当","#6a3d9a"],
+  "doten":["どてん","逆張り・想定外の判断が的中","#b5651d"],
+  "good_pass":["🛡好判断","見送って正解(買ってたら外れ)","#0a6b3c"],
+  "torikoboshi":["💧取りこぼし","見送ったが実は当たっていた","#7c8478"]
+};
+function awardSelector(f){
+  // 的中時は的中称号、見送り(hot=false)時は見送りマーク。どちらでもない時は非表示
+  var hitKeys=["kaishin","myomi","teppan","ooana","doten"];
+  var passKeys=["good_pass","torikoboshi"];
+  var keys=null,label="";
+  if(f.resultStatus==="hit"){keys=hitKeys;label="的中の称号(任意)";}
+  else if(f.hot===false){keys=passKeys;label="見送りマーク(任意)";}
+  if(!keys)return "";
+  var opts='<option value=""'+(!f.award?" selected":"")+'>'+label+'：なし</option>';
+  keys.forEach(function(k){
+    var a=AWARD_DEF[k];
+    opts+='<option value="'+k+'"'+(f.award===k?" selected":"")+'>'+a[0]+' … '+a[1]+'</option>';
+  });
+  return '<select onchange="setF(\'award\',this.value)" style="background:#fbf9f0;border:1px solid var(--rule);color:var(--ink);padding:8px 10px;font-family:var(--mono);font-size:13px;width:100%;box-sizing:border-box">'+opts+'</select>';
+}
+function moneyStamp(r){
+  var p=parseFloat(r.payout)||0;
+  if(r.resultStatus!=="hit")return "";
+  if(p>=100000)return '<span class="stamprow"><span class="stamp stamp-10man">的中</span><span class="hanamaru-lux">💮</span></span>';
+  if(p>=10000)return '<span class="stamprow"><span class="stamp stamp-man">的中</span><span class="hanamaru">🌸</span></span>';
+  return '<span class="hit">的中</span>';
+}
+function awardBadge(r){
+  if(!r.award||!AWARD_DEF[r.award])return "";
+  var a=AWARD_DEF[r.award];
+  return '<span class="award" style="color:'+a[2]+';border:1px solid '+a[2]+'">'+a[0]+'</span>';
+}
+function resultBadge(r){
+  // 後方互換: 文字列が渡ってきたら従来動作
+  if(typeof r==="string"){
+    if(r==="hit")return '<span class="hit">的中</span>';
+    if(r==="miss")return '<span class="miss">不的中</span>';
+    return '<span class="pend">結果待ち</span>';
+  }
+  var main;
+  if(r.resultStatus==="hit")main=moneyStamp(r);
+  else if(r.resultStatus==="miss")main='<span class="miss">不的中</span>';
+  else main='<span class="pend">結果待ち</span>';
+  var aw=awardBadge(r);
+  if(!aw)return main;
+  return '<span class="stampwrap">'+main+aw+'</span>';
+}
+
+function toggleAnalysis(){state.analysisOpen=!state.analysisOpen;render();}
+
+/* ROIバー1本。72%(理論床)と100%(黒字)の参照線を重ねる */
+function roiBar(label,n,roi,hits){
+  var pct=roi===null?0:Math.max(0,Math.min(roi,160)); // 表示上160%で頭打ち
+  var barColor=roi===null?FAINT:(roi>=100?GREEN:(roi>=72?GOLDL:RED));
+  var roiTxt=roi===null?"投資なし":roi+"%";
+  // 参照線位置(0-160%スケール)
+  var line72=72/160*100, line100=100/160*100;
+  return '<div style="margin-bottom:8px">'+
+    '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px">'+
+      '<span style="color:var(--ink)">'+esc(label)+' <span style="color:'+FAINT+'">n='+n+' 的中'+hits+'</span></span>'+
+      '<span style="color:'+barColor+';font-weight:800">'+roiTxt+'</span>'+
+    '</div>'+
+    '<div style="position:relative;height:14px;background:var(--paper2);border:1px solid var(--rule)">'+
+      '<div style="position:absolute;left:0;top:0;bottom:0;width:'+(pct/160*100)+'%;background:'+barColor+';opacity:.55"></div>'+
+      '<div style="position:absolute;left:'+line72+'%;top:0;bottom:0;width:1px;background:'+GOLDL+'"></div>'+
+      '<div style="position:absolute;left:'+line100+'%;top:0;bottom:0;width:2px;background:'+GREEN+'"></div>'+
+    '</div></div>';
+}
+function bdBlock(title,rows){
+  if(rows.length===0)return '<div style="margin-bottom:12px"><div class="pl-l" style="margin-bottom:6px">'+title+'</div><div style="font-size:11px;color:'+FAINT+'">データなし(該当フィールドを持つ勝負レコードが無い)</div></div>';
+  return '<div style="margin-bottom:14px"><div class="pl-l" style="margin-bottom:6px">'+title+'</div>'+
+    rows.map(function(r){return roiBar(r.label,r.n,r.roi,r.hits);}).join("")+'</div>';
+}
+function renderAnalysis(s){
+  var btn='<div style="text-align:center;margin:-6px 0 14px">'+
+    '<button onclick="toggleAnalysis()" style="background:'+GREEN+';color:#fff;border:none;padding:10px 20px;font-family:var(--mono);font-weight:800;font-size:13px;letter-spacing:.03em">'+
+    (state.analysisOpen?'▲ 分析を閉じる':'📊 分析を開く（Type/馬場/距離別ROI）')+'</button></div>';
+  if(!state.analysisOpen)return btn;
+
+  var byType=breakdown(function(r){return r.decisionType;},function(k){return TYPE_LABEL[k]||("Type"+k);});
+  var bySurface=breakdown(function(r){return r.surface;},function(k){return k==="dirt"?"ダート":k==="turf"?"芝":k;});
+  var byDist=breakdown(function(r){return r.distance;},function(k){return k+"m";});
+
+  var panel='<div class="ticket" style="padding:16px 16px 12px">'+
+    '<div class="pl-l" style="margin-bottom:4px">診断ボード</div>'+
+    '<div style="font-size:11px;color:'+FAINT+';margin-bottom:12px;line-height:1.6">'+
+      '参照線: <span style="color:'+GOLDL+'">縦線72%=理論床(サルより上か)</span> / '+
+      '<span style="color:'+GREEN+'">縦線100%=黒字境界</span>。72%超は理論床超えであって黒字ではない。'+
+      'トリガミ(的中だが元本割れ): <b style="color:var(--ink)">'+s.trigami+'件</b>'+
+    '</div>'+
+    bdBlock("決着タイプ別ROI",byType)+
+    bdBlock("馬場別ROI",bySurface)+
+    bdBlock("距離別ROI",byDist)+
+    '<div style="border-top:1px dashed var(--rule);margin-top:6px;padding-top:8px">'+
+      '<div class="pl-l" style="margin-bottom:6px">スタンプ凡例</div>'+
+      '<div style="font-size:10.5px;color:var(--ink);line-height:1.7">'+
+        '<b>的中</b>=通常（朱）/ <b style="color:#7a7f88">銀の的中＋🌸</b>=万馬券(1万〜)/ <b style="color:#7a5c00">金の的中＋💮</b>=10万馬券(10万〜)（配当で自動）<br>'+
+        '★会心=ABC完璧に噛み合った / 妙味的中=ミスプライス軸が来た / 鉄板=Type2本線で堅く / 大穴=人気薄を読んで高配当 / どてん=逆張り的中<br>'+
+        '🛡好判断=見送って正解 / 💧取りこぼし=見送ったが実は的中'+
+      '</div>'+
+    '</div>'+
+    '<div style="font-size:10px;color:'+FAINT+';margin-top:4px">※各内訳は該当フィールドを持つ勝負レコードのみ集計。母数nが小さい間は暫定値。</div>'+
+  '</div>';
+  return btn.replace('📊 分析を開く（Type/馬場/距離別ROI）','▲ 分析を閉じる')+panel;
+}
+
+function render(){
+  var s=stats();var app=document.getElementById("app");
+  var plColor=s.pl>0?GREEN:s.pl<0?RED:"var(--greenD)";
+  var roiColor=s.roiNum>=100&&!s.invZero?RED:"var(--greenD)";
+
+  var header=
+  '<div class="ticket" style="padding:22px 20px 18px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">'+
+      '<div style="min-width:0"><div class="kicker">ABC ANALYSIS · 勝馬予想控</div>'+
+      '<h1>競馬ＡＢＣ予想 記録帳</h1></div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+        '<button class="btn-ghost" onclick="exportFile()">ファイルに書き出し</button>'+
+        '<button class="btn-ghost" onclick="openPaste()">取込（貼り付け）</button>'+
+        '<button class="btn-ghost" onclick="document.getElementById(\'imp\').click()">ファイルから読込</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="dash"></div>'+
+    '<div class="stats">'+
+      stat("記録",s.total)+stat("勝負数",s.placed)+stat("的中",s.hits,RED)+
+      stat("的中率",s.hitRate)+stat("回収率",s.roi,roiColor)+
+      stat("収支",s.placed?(s.pl>=0?"+":"")+s.pl.toLocaleString():"—",plColor)+
+    '</div>'+
+  '</div>';
+
+  var analysis=renderAnalysis(s);
+
+  var err=state.err?'<div class="errbar">'+esc(state.err)+'</div>':'';
+
+  var typeOpts=[["all","Type: 全部"],["1","Type1 堅い妙味なし"],["2","Type2 堅い軸+妙味"],["3","Type3 割れ複数妙味"],["4","Type4 上位堅い順不明"],["none","Type未設定"]];
+  var typeSel='<select onchange="setType(this.value)" style="background:var(--greenD);border:1px solid var(--greenD);color:var(--paper);padding:6px 10px;font-family:var(--mono);font-weight:800;font-size:12px">'+
+    typeOpts.map(function(o){return '<option value="'+o[0]+'"'+(state.typeFilter===o[0]?" selected":"")+'>'+o[1]+'</option>';}).join("")+'</select>';
+  var catSel='<select onchange="setCat(this.value)" style="background:var(--paper);border:1px solid var(--rule);color:var(--greenD);padding:6px 10px;font-family:var(--mono);font-weight:700;font-size:12px">'+
+    catOptions().map(function(o){return '<option value="'+o[0]+'"'+(state.catFilter===o[0]?" selected":"")+'>'+o[1]+'</option>';}).join("")+'</select>';
+  var toolbar=state.editing===null?
+    '<div class="toolbar">'+
+      '<button class="btn-solid" onclick="startNew()">＋ 新規購入控</button>'+
+      '<div class="filters">'+
+        filt("all","全部")+filt("hot","🔥勝負")+filt("pending","結果待ち")+
+      '</div>'+
+    '</div>'+
+    '<div style="margin:-6px 0 12px;display:flex;gap:8px;flex-wrap:wrap">'+typeSel+catSel+'</div>':'';
+
+  var pasteHtml=state.pasteOpen?renderPaste():'';
+  var formHtml=state.editing!==null?renderForm():'';
+
+  var shown=state.races.filter(function(r){
+    var base=state.filter==="all"?true:state.filter==="hot"?r.hot:r.resultStatus==="pending";
+    return base && catMatch(r) && typeMatch(r);
+  });
+  var totalShown=shown.length;
+  var visible=shown.slice(0,state.limit);
+  var list=totalShown?visible.map(renderRace).join(""):'<div class="empty">該当する券なし。「新規購入控」から記録しよか。</div>';
+  if(totalShown>state.limit){
+    list+='<div style="text-align:center;margin:14px 0 6px"><button onclick="showMore()" style="background:'+GOLDL+';color:#fff;border:none;padding:10px 22px;font-family:var(--mono);font-weight:800;font-size:13px;letter-spacing:.05em">もっと見る（残り'+(totalShown-state.limit)+'件）</button></div>';
+  } else if(totalShown>20){
+    list+='<div style="text-align:center;margin:14px 0 6px"><button onclick="showLess()" style="background:transparent;color:'+GOLDL+';border:1px solid '+GOLDL+';padding:8px 18px;font-family:var(--mono);font-weight:700;font-size:12px">▲ 最新20件に戻す</button></div>';
+  }
+
+  app.innerHTML=header+analysis+err+pasteHtml+toolbar+formHtml+list+
+    '<input type="file" id="imp" accept="application/json,.json" style="display:none" onchange="importFile(event)">';
+}
+function stat(l,v,color){return '<div class="stat"><div class="l">'+l+'</div><div class="v"'+(color?' style="color:'+color+'"':'')+'>'+v+'</div></div>';}
+function filt(k,l){return '<button class="'+(state.filter===k?"on":"")+'" onclick="setFilter(\''+k+'\')">'+l+'</button>';}
+
+function renderRace(r){
+  var a=parseHorses(r.a),b=parseHorses(r.b),c=parseHorses(r.c);
+  var j=judge(a,b,c);
+  var honsen=j.filter(function(x){return x.tier==="本線軸";});
+  var chuuana=j.filter(function(x){return x.tier==="中穴ヒモ枠";});
+  var force3=j.filter(function(x){return x.tier==="3列目強制";});
+  var top=j[0]?j[0].count:0;
+  var badge=honsen.length?GOLD:top===2?JADE:"var(--rule)";
+  var isOpen=state.open===r.id;
+
+  function names(arr){return arr.map(function(x){return x.number+(x.name||"");}).join("・");}
+
+  var head=
+    '<div class="row-head" onclick="toggle(\''+r.id+'\')">'+
+      '<div class="barL" style="background:'+badge+'"></div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div class="r-date">'+esc(r.date)+' '+esc(r.track)+(r.raceNumber?' '+esc(r.raceNumber)+'R':'')+'</div>'+
+        '<div class="r-name">'+esc(r.raceName)+(r.grade?'<span class="grade">'+esc(r.grade)+'</span>':'')+'</div>'+
+        '<div class="r-sub">'+esc(r.betType)+' · '+(r.hot?'勝負':'記録のみ')+
+          (r.decisionType?' · <span style="color:'+GOLDL+';font-weight:700">'+esc(TYPE_LABEL[""+r.decisionType]||("Type"+r.decisionType))+'</span>':'')+
+        '</div>'+
+      '</div>'+
+      resultBadge(r)+
+      '<span style="color:'+FAINT+'">'+(isOpen?'▲':'▼')+'</span>'+
+    '</div>';
+
+  var body="";
+  if(isOpen){
+    var alerts="";
+    if(force3.length)alerts+=alertBox(RED,"3列目強制: "+names(force3)+"（C単独×6番人気以下。三連複3列目に必ず）");
+    if(honsen.length)alerts+=alertBox(GOLD,"本線軸: "+names(honsen)+"（重複3＝堅く取る）");
+    if(chuuana.length)alerts+=alertBox(JADE,"中穴ヒモ枠: "+names(chuuana)+"（重複2×6番人気以下。別建てで配当狙い）");
+    var judgeHtml=j.length?'<div><div class="cap">判定（自動）</div><div class="chips">'+j.map(chip).join("")+'</div></div>':'';
+    var plansHtml='<div class="plans">'+planCol("Ａ データ基準",a)+planCol("Ｂ 実績・能力",b)+planCol("Ｃ チャート軸",c)+'</div>';
+    var fields="";
+    if(r.decisionType)fields+=field("決着タイプ","<span style=\"color:"+GOLDL+";font-weight:700\">"+esc(TYPE_LABEL[""+r.decisionType]||("Type"+r.decisionType))+"</span>");
+    var sd=[];
+    if(r.surface)sd.push(r.surface==="turf"?"芝":"ダート");
+    if(r.distance)sd.push(r.distance+"m");
+    if(sd.length)fields+=field("条件",sd.join(" / "));
+    if(r.trackCondition)fields+=field("馬場",r.trackCondition);
+    if(r.mispriceNote)fields+=field("ミスプライス軸メモ",r.mispriceNote);
+    fields+='<div class="two">'+field("買い目",esc(r.betType)+" / "+(esc(r.betCombos)||"—")+" / "+yen(r.betAmount))+
+            field("結果",(esc(r.resultOrder)||"—")+" / 配当 "+yen(r.payout))+'</div>';
+    if(r.memo)fields+=field("メモ・反省",r.memo);
+    body='<div class="body">'+alerts+judgeHtml+plansHtml+fields+barcode()+
+      '<div class="actions">'+
+        '<button class="btn-ghost" onclick="startEdit(\''+r.id+'\')">編集</button>'+
+        '<button class="btn-ghost" style="color:'+RED+';border-color:transparent" onclick="del(\''+r.id+'\')">🗑 削除</button>'+
+      '</div></div>';
+  }
+  return '<div class="ticket">'+head+body+'</div>';
+}
+function alertBox(color,text){return '<div class="alert" style="border-left:3px solid '+color+'">'+esc(text)+'</div>';}
+function field(label,val){return '<div class="field"><div class="cap">'+label+'</div><div class="fv">'+val+'</div></div>';}
+
+function renderForm(){
+  var f=state.form;
+  var a=parseHorses(f.a),b=parseHorses(f.b),c=parseHorses(f.c);
+  var j=judge(a,b,c);
+  var chips=j.length?'<div class="chips">'+j.map(chip).join("")+'</div>':'';
+  function v(x){return esc(f[x]);}
+  function sel(field,opts){return opts.map(function(o){
+    return '<option'+(f[field]===o?' selected':'')+'>'+o+'</option>';}).join("");}
+  return '<div class="ticket" style="padding:20px 16px 16px;border:1px solid '+RED+'">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+      '<b style="font-size:14px;color:var(--greenD)">購入控の記入</b>'+
+      '<button onclick="cancelEdit()" style="background:none;border:none;color:'+FAINT+';font-size:18px">✕</button></div>'+
+    '<div style="display:flex;flex-direction:column;gap:12px">'+
+      '<div class="grid4">'+
+        '<input type="date" value="'+v("date")+'" oninput="setF(\'date\',this.value)">'+
+        '<input placeholder="競馬場" value="'+v("track")+'" oninput="setF(\'track\',this.value)">'+
+        '<input placeholder="R番号" value="'+v("raceNumber")+'" oninput="setF(\'raceNumber\',this.value)">'+
+        '<input placeholder="グレード(任意)" value="'+v("grade")+'" oninput="setF(\'grade\',this.value)">'+
+      '</div>'+
+      '<input placeholder="レース名（例: 函館記念）" value="'+v("raceName")+'" oninput="setF(\'raceName\',this.value)">'+
+      '<input placeholder="馬場状態（任意・直前に再確認）" value="'+v("trackCondition")+'" oninput="setF(\'trackCondition\',this.value)">'+
+      '<div class="hint">馬は「馬番:馬名:人気」を改行かカンマ区切り（人気は任意）。例 → 5:イガッチ:1</div>'+
+      '<div class="grid3">'+
+        '<textarea style="height:80px" placeholder="Ａ データ基準" oninput="setF(\'a\',this.value)">'+v("a")+'</textarea>'+
+        '<textarea style="height:80px" placeholder="Ｂ 実績・能力（人気独立）" oninput="setF(\'b\',this.value)">'+v("b")+'</textarea>'+
+        '<textarea style="height:80px" placeholder="Ｃ チャート軸（人気独立）" oninput="setF(\'c\',this.value)">'+v("c")+'</textarea>'+
+      '</div>'+
+      chips+
+      '<textarea style="height:54px" placeholder="ミスプライス軸メモ（実力序列 vs オッズの乖離）" oninput="setF(\'mispriceNote\',this.value)">'+v("mispriceNote")+'</textarea>'+
+      '<label class="chk"><input type="checkbox"'+(f.hot?' checked':'')+' onchange="setF(\'hot\',this.checked)"> 🔥 熱いレース（実際に賭ける／集計対象）</label>'+
+      '<div class="grid4">'+
+        '<select onchange="setF(\'betType\',this.value)">'+sel("betType",["単勝","複勝","枠連","馬連","馬単","ワイド","三連複","三連単","複数併用"])+'</select>'+
+        '<input placeholder="買い目" value="'+v("betCombos")+'" oninput="setF(\'betCombos\',this.value)">'+
+        '<input type="number" placeholder="賭け金¥" value="'+v("betAmount")+'" oninput="setF(\'betAmount\',this.value)">'+
+      '</div>'+
+      '<div class="grid4" style="border-top:1px dashed var(--rule);padding-top:12px">'+
+        '<select onchange="setF(\'decisionType\',this.value===\'\'?null:parseInt(this.value,10))">'+
+          '<option value=""'+(f.decisionType==null?" selected":"")+'>決着Type(任意)</option>'+
+          '<option value="1"'+(f.decisionType===1?" selected":"")+'>Type1 堅い・妙味なし</option>'+
+          '<option value="2"'+(f.decisionType===2?" selected":"")+'>Type2 堅い軸+妙味</option>'+
+          '<option value="3"'+(f.decisionType===3?" selected":"")+'>Type3 割れ・複数妙味</option>'+
+          '<option value="4"'+(f.decisionType===4?" selected":"")+'>Type4 上位堅い順番不明</option>'+
+        '</select>'+
+        '<select onchange="setF(\'surface\',this.value)">'+
+          '<option value=""'+(!f.surface?" selected":"")+'>馬場(任意)</option>'+
+          '<option value="dirt"'+(f.surface==="dirt"?" selected":"")+'>ダート</option>'+
+          '<option value="turf"'+(f.surface==="turf"?" selected":"")+'>芝</option>'+
+        '</select>'+
+        '<input type="number" placeholder="距離m(任意)" value="'+v("distance")+'" oninput="setF(\'distance\',this.value===\'\'?\'\':parseInt(this.value,10))">'+
+      '</div>'+
+      '<div class="grid4">'+
+        '<input placeholder="着順 例:5-8-7" value="'+v("resultOrder")+'" oninput="setF(\'resultOrder\',this.value)">'+
+        '<select onchange="setF(\'resultStatus\',this.value)">'+
+          '<option value="pending"'+(f.resultStatus==="pending"?" selected":"")+'>結果待ち</option>'+
+          '<option value="hit"'+(f.resultStatus==="hit"?" selected":"")+'>的中</option>'+
+          '<option value="miss"'+(f.resultStatus==="miss"?" selected":"")+'>不的中</option>'+
+        '</select>'+
+        '<input type="number" placeholder="配当¥" value="'+v("payout")+'" oninput="setF(\'payout\',this.value)">'+
+      '</div>'+
+      awardSelector(f)+
+      '<textarea style="height:54px" placeholder="メモ・反省（買い目設計の良し悪しと結果は分けて）" oninput="setF(\'memo\',this.value)">'+v("memo")+'</textarea>'+
+      '<div class="actions">'+
+        '<button class="btn-solid" onclick="saveForm()">💾 保存</button>'+
+        '<button class="btn-ghost" onclick="cancelEdit()">キャンセル</button>'+
+      '</div>'+
+    '</div></div>';
+}
+
+/* ===== アクション ===== */
+function setFilter(k){state.filter=k;state.limit=20;render();}
+function toggle(id){state.open=state.open===id?null:id;render();}
+function startNew(){state.form=blank();state.editing="new";state.open=null;state.err="";render();}
+function startEdit(id){var r=state.races.filter(function(x){return x.id===id;})[0];
+  state.form=Object.assign({},r);state.editing=id;state.open=null;render();}
+function cancelEdit(){state.editing=null;state.form=blank();state.err="";render();}
+function setF(k,v){state.form[k]=v;
+  // 入力中はチップ再計算のため再描画（フォーカス維持のためA/B/C/形成系のみ）
+  if(k==="a"||k==="b"||k==="c"){ // チップだけ更新したいが簡易に全再描画は避け、テキストは保持済み
+  }
+}
+function saveForm(){
+  var f=state.form;
+  if(!f.date||!f.raceName){state.err="日付とレース名は必須や。";render();return;}
+  state.err="";
+  if(state.editing==="new"){f.id=""+Date.now();state.races.push(Object.assign({},f));}
+  else{state.races=state.races.map(function(r){return r.id===state.editing?Object.assign({},f):r;});}
+  state.races.sort(function(x,y){return x.date<y.date?1:-1;});
+  save();state.editing=null;state.form=blank();render();
+}
+function del(id){
+  if(!confirm("この券を削除する？"))return;
+  state.races=state.races.filter(function(r){return r.id!==id;});
+  if(state.open===id)state.open=null;
+  save();render();
+}
+
+/* ===== ファイル入出力（スマホのストレージ） ===== */
+function exportFile(){
+  var data=JSON.stringify(state.races,null,2);
+  var blob=new Blob([data],{type:"application/json"});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  var d=new Date();var stamp=d.getFullYear()+("0"+(d.getMonth()+1)).slice(-2)+("0"+d.getDate()).slice(-2);
+  a.href=url;a.download="競馬ABC記録_"+stamp+".json";
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},1000);
+}
+function importFile(ev){
+  var file=ev.target.files[0];if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(){
+    try{
+      var parsed=JSON.parse(reader.result);
+      if(!Array.isArray(parsed))parsed=[parsed];
+      var byId={};state.races.forEach(function(r){byId[r.id]=r;});
+      parsed.forEach(function(p){
+        var rec=Object.assign(blank(),p);
+        if(!rec.id)rec.id=""+Date.now()+Math.floor(Math.random()*1000);
+        byId[rec.id]=rec;
+      });
+      state.races=Object.keys(byId).map(function(k){return byId[k];})
+        .sort(function(x,y){return x.date<y.date?1:-1;});
+      save();render();
+      alert("読み込み完了（"+parsed.length+"件）");
+    }catch(e){alert("読み込み失敗：JSON形式を確認してな。");}
+    ev.target.value="";
+  };
+  reader.readAsText(file);
+}
+
+
+function openPaste(){state.pasteOpen=true;state.pasteText="";render();}
+function closePaste(){state.pasteOpen=false;state.pasteText="";render();}
+function setPaste(v){state.pasteText=v;}
+function renderPaste(){
+  return '<div class="ticket" style="padding:18px 16px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<b style="color:var(--greenD);font-size:13px">JSON取込（貼り付け）</b>'+
+      '<button onclick="closePaste()" style="background:none;border:none;color:'+FAINT+';font-size:18px">✕</button></div>'+
+    '<textarea id="pastebox" style="height:130px" placeholder="Claudeがくれたデータをここに貼り付け" oninput="setPaste(this.value)">'+esc(state.pasteText||"")+'</textarea>'+
+    '<div class="hint" style="margin:6px 0 10px">同じidの券は上書き、新規は追加。</div>'+
+    '<button class="btn-solid" onclick="doPaste()">取り込む</button></div>';
+}
+/* 貼り付けJSONの自動修復。よくある壊れ方を無害化してからparseを試みる */
+function tryParseRepair(raw){
+  // 1) まず素で試す
+  try{return JSON.parse(raw);}catch(e){}
+  var t=raw;
+  // 2) 前後のコードフェンスや余計なテキストを除去(最初の{か[から最後の}か]まで)
+  var s=t.search(/[\{\[]/), e=Math.max(t.lastIndexOf("}"),t.lastIndexOf("]"));
+  if(s>=0&&e>s){t=t.slice(s,e+1);}
+  // 3) 全角引用符・全角カンマ・全角コロンを半角へ
+  t=t.replace(/[“”]/g,'"').replace(/[，、]/g,",").replace(/：/g,":");
+  // 4) 文字列値の中に紛れた「生の改行」をエスケープ済み\nに変換
+  //    (JSONは文字列内の生改行を許さない。ダブルクオート内だけ対象にする)
+  var out="",inStr=false,prev="";
+  for(var i=0;i<t.length;i++){
+    var ch=t[i];
+    if(ch==='"'&&prev!=="\\"){inStr=!inStr;out+=ch;prev=ch;continue;}
+    if(inStr&&(ch==="\n"||ch==="\r")){out+="\\n";prev=ch;continue;}
+    out+=ch;prev=ch;
+  }
+  t=out;
+  // 5) 末尾カンマ除去  ,}  ,]
+  t=t.replace(/,\s*([\}\]])/g,"$1");
+  // 6) オブジェクト間の欠落カンマを補う  }{ → },{
+  t=t.replace(/\}\s*\{/g,"},{");
+  try{return JSON.parse(t);}catch(e2){throw e2;}
+}
+function doPaste(){
+  var txt=(state.pasteText||"").trim();
+  if(!txt){return;}
+  var parsed;
+  try{
+    parsed=tryParseRepair(txt);
+  }catch(e){
+    alert("取込失敗：JSONを直せませんでした。\n"+(e&&e.message?e.message:"")+"\n\nうまくいかない時は『ファイルから読込』を使うと確実です。");
+    return;
+  }
+  try{
+    if(!Array.isArray(parsed))parsed=[parsed];
+    var byId={};state.races.forEach(function(r){byId[r.id]=r;});
+    var added=0;
+    parsed.forEach(function(p){
+      if(!p||typeof p!=="object")return;
+      var rec=Object.assign(blank(),p);
+      if(!rec.id)rec.id=""+Date.now()+Math.floor(Math.random()*1000);
+      byId[rec.id]=rec;added++;
+    });
+    state.races=Object.keys(byId).map(function(k){return byId[k];})
+      .sort(function(x,y){return x.date<y.date?1:-1;});
+    save();state.pasteOpen=false;state.pasteText="";render();
+    alert("取込完了（"+added+"件）");
+  }catch(e3){alert("取込失敗：データ形式を確認してな。");}
+}
+
+/* 起動 */
+load();render();
+</script>
+</body>
+</html>
