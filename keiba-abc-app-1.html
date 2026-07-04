@@ -44,6 +44,14 @@
   .r-sub{font-size:11px;color:var(--faint);margin-top:3px;}
   .grade{font-size:12px;color:var(--faint);margin-left:6px;}
   .hit{color:var(--red);font-weight:800;font-size:13px;border:2px solid var(--red);border-radius:4px;padding:2px 8px;transform:rotate(-7deg);letter-spacing:.1em;}
+  .stamp{font-weight:800;border-radius:5px;transform:rotate(-7deg);letter-spacing:.1em;white-space:nowrap;display:inline-block;}
+  .stamp-man{font-size:13px;padding:2px 8px;color:#7a7f88;border:2px solid #9aa0aa;background:linear-gradient(135deg,#f4f5f7,#d8dbe0,#f4f5f7);}
+  .stamp-10man{font-size:13px;padding:2px 8px;color:#7a5c00;border:2px solid #d4af37;background:linear-gradient(135deg,#fff8dc,#f5d97a,#fff8dc);box-shadow:0 0 6px rgba(212,175,55,.7);}
+  .hanamaru{font-size:22px;line-height:1;}
+  .hanamaru-lux{font-size:30px;line-height:1;filter:drop-shadow(0 0 3px rgba(212,175,55,.9));}
+  .stamprow{display:flex;align-items:center;gap:4px;}
+  .award{font-size:10px;font-weight:800;border-radius:3px;padding:1px 6px;letter-spacing:.05em;white-space:nowrap;display:inline-block;}
+  .stampwrap{display:flex;flex-direction:column;gap:3px;align-items:flex-end;}
   .miss{color:var(--faint);font-size:12px;} .pend{color:var(--faint);font-size:11px;}
   .body{border-top:1px dashed var(--rule);padding:16px;display:flex;flex-direction:column;gap:14px;}
   .alert{display:flex;gap:8px;align-items:flex-start;background:var(--paper2);padding:8px 10px;font-size:12.5px;}
@@ -83,11 +91,12 @@ var KEY="abc-races";
 /* ===== データ ===== */
 function blank(){return{id:"",date:"",track:"",raceNumber:"",raceName:"",grade:"",trackCondition:"",
   a:"",b:"",c:"",mispriceNote:"",hot:false,betType:"三連複",betCombos:"",betAmount:"",
-  resultOrder:"",resultStatus:"pending",payout:"",memo:""};}
+  resultOrder:"",resultStatus:"pending",payout:"",memo:"",
+  decisionType:null,surface:"",distance:"",award:""};}
 
 var SEED=[];
 
-var state={races:[],filter:"all",editing:null,form:blank(),open:null,err:"",pasteOpen:false,pasteText:""};
+var state={races:[],filter:"all",editing:null,form:blank(),open:null,err:"",pasteOpen:false,pasteText:"",analysisOpen:false,catFilter:"all",typeFilter:"all",limit:20};
 
 function load(){
   try{var raw=localStorage.getItem(KEY);
@@ -139,22 +148,80 @@ function stats(){
   var hits=placed.filter(function(r){return r.resultStatus==="hit";});
   var inv=placed.reduce(function(s,r){return s+(parseFloat(r.betAmount)||0);},0);
   var ret=hits.reduce(function(s,r){return s+(parseFloat(r.payout)||0);},0);
+  // トリガミ=的中だが払戻<投資
+  var trigami=hits.filter(function(r){return (parseFloat(r.payout)||0) < (parseFloat(r.betAmount)||0);}).length;
   return{total:state.races.length,placed:placed.length,hits:hits.length,
     hitRate:placed.length?Math.round(hits.length/placed.length*100)+"%":"—",
-    roi:inv?Math.round(ret/inv*100)+"%":"—",pl:ret-inv,invZero:inv===0,roiNum:inv?ret/inv*100:0};
+    roi:inv?Math.round(ret/inv*100)+"%":"—",pl:ret-inv,invZero:inv===0,roiNum:inv?ret/inv*100:0,
+    trigami:trigami};
 }
+
+/* 切り口別ROI集計。keyFnがnull/空を返すレコードは除外(補完しない) */
+function breakdown(keyFn,labelFn){
+  var placed=state.races.filter(function(r){return r.hot&&r.resultStatus!=="pending";});
+  var groups={};
+  placed.forEach(function(r){
+    var k=keyFn(r);
+    if(k===null||k===undefined||k==="")return; // 欠損は除外
+    k=""+k;
+    if(!groups[k])groups[k]={n:0,inv:0,ret:0,hits:0};
+    var g=groups[k];
+    g.n++;
+    g.inv+=(parseFloat(r.betAmount)||0);
+    if(r.resultStatus==="hit"){g.hits++;g.ret+=(parseFloat(r.payout)||0);}
+  });
+  return Object.keys(groups).sort(function(a,b){
+    var na=parseFloat(a),nb=parseFloat(b);
+    if(!isNaN(na)&&!isNaN(nb))return na-nb; // 数値キー(距離等)は数値順
+    return a<b?-1:a>b?1:0;                  // それ以外は辞書順
+  }).map(function(k){
+    var g=groups[k];
+    return{label:labelFn?labelFn(k):k,n:g.n,hits:g.hits,inv:g.inv,ret:g.ret,
+      roi:g.inv?Math.round(g.ret/g.inv*100):null};
+  });
+}
+var TYPE_LABEL={"1":"Type1（堅い・妙味なし）","2":"Type2（堅い軸＋妙味）","3":"Type3（割れ・複数妙味）","4":"Type4（上位堅い・順番不明）"};
+var JRA_TRACKS=["札幌","函館","福島","新潟","東京","中山","中京","京都","阪神","小倉"];
+function isJRA(r){return JRA_TRACKS.indexOf(r.track)>=0;}
+function isStakes(r){var g=(r.grade||"");return /G[1-3ⅠⅡⅢ]|Jpn|重賞/i.test(g);}
+function catMatch(r){
+  var f=state.catFilter;
+  if(f==="all")return true;
+  if(f==="jra")return isJRA(r);
+  if(f==="chiho")return !isJRA(r);
+  if(f==="stakes")return isStakes(r);
+  if(f.indexOf("track:")===0)return r.track===f.slice(6);
+  return true;
+}
+function typeMatch(r){
+  var f=state.typeFilter;
+  if(f==="all")return true;
+  if(f==="none")return r.decisionType==null;
+  return (""+r.decisionType)===f;
+}
+function setCat(v){state.catFilter=v;state.limit=20;render();}
+function setType(v){state.typeFilter=v;state.limit=20;render();}
+function catOptions(){
+  // 記録がある競馬場だけ動的に
+  var tracks={};state.races.forEach(function(r){if(r.track)tracks[r.track]=1;});
+  var tk=Object.keys(tracks).sort();
+  var opts=[["all","絞り込み: 全部"],["jra","JRA全体"],["chiho","地方全体"],["stakes","重賞のみ"]];
+  tk.forEach(function(t){opts.push(["track:"+t,"　競馬場: "+t]);});
+  return opts;
+}
+
 
 /* ===== レンダリング ===== */
 function chip(j){
   return '<span class="chip" style="border-color:'+tierColor(j.tier)+'">'+
     '<b style="color:'+tierColor(j.tier)+'">'+esc(j.number)+'</b>'+esc(j.name)+
     '<span style="color:'+FAINT+'">['+j.plans.join("")+']</span>'+
-    (j.nk?'<span style="color:'+FAINT+'">'+j.nk+'人</span>':'')+
+    (j.nk?'<span style="color:'+FAINT+'">'+j.nk+'番人気</span>':'')+
     '<span style="color:'+tierColor(j.tier)+';font-size:10px">'+j.tier+'</span></span>';
 }
 function planCol(label,horses){
   var hs=horses.length?horses.map(function(h){
-    return '<div class="h">'+esc(h.number)+' '+esc(h.name)+(h.ninki?' <span style="color:'+FAINT+'">'+esc(h.ninki)+'人</span>':'')+'</div>';
+    return '<div class="h">'+esc(h.number)+' '+esc(h.name)+(h.ninki?' <span style="color:'+FAINT+'">'+esc(h.ninki)+'番人気</span>':'')+'</div>';
   }).join(""):'<div class="h" style="color:'+FAINT+'">—</div>';
   return '<div class="plan"><div class="pl-l">'+label+'</div>'+hs+'</div>';
 }
@@ -163,10 +230,114 @@ function barcode(){
   return '<div class="barcode">'+w.map(function(x){return '<div style="width:'+x+'px"></div>';}).join("")+
     '<span style="font-size:9px;color:'+FAINT+';margin-left:6px;letter-spacing:.2em">ABC-LEDGER</span></div>';
 }
-function resultBadge(s){
-  if(s==="hit")return '<span class="hit">的中</span>';
-  if(s==="miss")return '<span class="miss">不的中</span>';
-  return '<span class="pend">結果待ち</span>';
+var AWARD_DEF={
+  "kaishin":["★会心","ABCが完璧に噛み合った会心の的中","#a6332a"],
+  "myomi":["妙味的中","過小評価のミスプライス軸が来た","#0a6b3c"],
+  "teppan":["鉄板","Type2本線でカッチリ獲った","#9a7b16"],
+  "ooana":["大穴","人気薄を読んで獲った高配当","#6a3d9a"],
+  "doten":["どてん","逆張り・想定外の判断が的中","#b5651d"],
+  "good_pass":["🛡好判断","見送って正解(買ってたら外れ)","#0a6b3c"],
+  "torikoboshi":["💧取りこぼし","見送ったが実は当たっていた","#7c8478"]
+};
+function awardSelector(f){
+  // 的中時は的中称号、見送り(hot=false)時は見送りマーク。どちらでもない時は非表示
+  var hitKeys=["kaishin","myomi","teppan","ooana","doten"];
+  var passKeys=["good_pass","torikoboshi"];
+  var keys=null,label="";
+  if(f.resultStatus==="hit"){keys=hitKeys;label="的中の称号(任意)";}
+  else if(f.hot===false){keys=passKeys;label="見送りマーク(任意)";}
+  if(!keys)return "";
+  var opts='<option value=""'+(!f.award?" selected":"")+'>'+label+'：なし</option>';
+  keys.forEach(function(k){
+    var a=AWARD_DEF[k];
+    opts+='<option value="'+k+'"'+(f.award===k?" selected":"")+'>'+a[0]+' … '+a[1]+'</option>';
+  });
+  return '<select onchange="setF(\'award\',this.value)" style="background:#fbf9f0;border:1px solid var(--rule);color:var(--ink);padding:8px 10px;font-family:var(--mono);font-size:13px;width:100%;box-sizing:border-box">'+opts+'</select>';
+}
+function moneyStamp(r){
+  var p=parseFloat(r.payout)||0;
+  if(r.resultStatus!=="hit")return "";
+  if(p>=100000)return '<span class="stamprow"><span class="stamp stamp-10man">的中</span><span class="hanamaru-lux">💮</span></span>';
+  if(p>=10000)return '<span class="stamprow"><span class="stamp stamp-man">的中</span><span class="hanamaru">🌸</span></span>';
+  return '<span class="hit">的中</span>';
+}
+function awardBadge(r){
+  if(!r.award||!AWARD_DEF[r.award])return "";
+  var a=AWARD_DEF[r.award];
+  return '<span class="award" style="color:'+a[2]+';border:1px solid '+a[2]+'">'+a[0]+'</span>';
+}
+function resultBadge(r){
+  // 後方互換: 文字列が渡ってきたら従来動作
+  if(typeof r==="string"){
+    if(r==="hit")return '<span class="hit">的中</span>';
+    if(r==="miss")return '<span class="miss">不的中</span>';
+    return '<span class="pend">結果待ち</span>';
+  }
+  var main;
+  if(r.resultStatus==="hit")main=moneyStamp(r);
+  else if(r.resultStatus==="miss")main='<span class="miss">不的中</span>';
+  else main='<span class="pend">結果待ち</span>';
+  var aw=awardBadge(r);
+  if(!aw)return main;
+  return '<span class="stampwrap">'+main+aw+'</span>';
+}
+
+function toggleAnalysis(){state.analysisOpen=!state.analysisOpen;render();}
+
+/* ROIバー1本。72%(理論床)と100%(黒字)の参照線を重ねる */
+function roiBar(label,n,roi,hits){
+  var pct=roi===null?0:Math.max(0,Math.min(roi,160)); // 表示上160%で頭打ち
+  var barColor=roi===null?FAINT:(roi>=100?GREEN:(roi>=72?GOLDL:RED));
+  var roiTxt=roi===null?"投資なし":roi+"%";
+  // 参照線位置(0-160%スケール)
+  var line72=72/160*100, line100=100/160*100;
+  return '<div style="margin-bottom:8px">'+
+    '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px">'+
+      '<span style="color:var(--ink)">'+esc(label)+' <span style="color:'+FAINT+'">n='+n+' 的中'+hits+'</span></span>'+
+      '<span style="color:'+barColor+';font-weight:800">'+roiTxt+'</span>'+
+    '</div>'+
+    '<div style="position:relative;height:14px;background:var(--paper2);border:1px solid var(--rule)">'+
+      '<div style="position:absolute;left:0;top:0;bottom:0;width:'+(pct/160*100)+'%;background:'+barColor+';opacity:.55"></div>'+
+      '<div style="position:absolute;left:'+line72+'%;top:0;bottom:0;width:1px;background:'+GOLDL+'"></div>'+
+      '<div style="position:absolute;left:'+line100+'%;top:0;bottom:0;width:2px;background:'+GREEN+'"></div>'+
+    '</div></div>';
+}
+function bdBlock(title,rows){
+  if(rows.length===0)return '<div style="margin-bottom:12px"><div class="pl-l" style="margin-bottom:6px">'+title+'</div><div style="font-size:11px;color:'+FAINT+'">データなし(該当フィールドを持つ勝負レコードが無い)</div></div>';
+  return '<div style="margin-bottom:14px"><div class="pl-l" style="margin-bottom:6px">'+title+'</div>'+
+    rows.map(function(r){return roiBar(r.label,r.n,r.roi,r.hits);}).join("")+'</div>';
+}
+function renderAnalysis(s){
+  var btn='<div style="text-align:center;margin:-6px 0 14px">'+
+    '<button onclick="toggleAnalysis()" style="background:'+GREEN+';color:#fff;border:none;padding:10px 20px;font-family:var(--mono);font-weight:800;font-size:13px;letter-spacing:.03em">'+
+    (state.analysisOpen?'▲ 分析を閉じる':'📊 分析を開く（Type/馬場/距離別ROI）')+'</button></div>';
+  if(!state.analysisOpen)return btn;
+
+  var byType=breakdown(function(r){return r.decisionType;},function(k){return TYPE_LABEL[k]||("Type"+k);});
+  var bySurface=breakdown(function(r){return r.surface;},function(k){return k==="dirt"?"ダート":k==="turf"?"芝":k;});
+  var byDist=breakdown(function(r){return r.distance;},function(k){return k+"m";});
+
+  var panel='<div class="ticket" style="padding:16px 16px 12px">'+
+    '<div class="pl-l" style="margin-bottom:4px">診断ボード</div>'+
+    '<div style="font-size:11px;color:'+FAINT+';margin-bottom:12px;line-height:1.6">'+
+      '参照線: <span style="color:'+GOLDL+'">縦線72%=理論床(サルより上か)</span> / '+
+      '<span style="color:'+GREEN+'">縦線100%=黒字境界</span>。72%超は理論床超えであって黒字ではない。'+
+      'トリガミ(的中だが元本割れ): <b style="color:var(--ink)">'+s.trigami+'件</b>'+
+    '</div>'+
+    bdBlock("決着タイプ別ROI",byType)+
+    bdBlock("馬場別ROI",bySurface)+
+    bdBlock("距離別ROI",byDist)+
+    '<div style="border-top:1px dashed var(--rule);margin-top:6px;padding-top:8px">'+
+      '<div class="pl-l" style="margin-bottom:6px">スタンプ凡例</div>'+
+      '<div style="font-size:10.5px;color:var(--ink);line-height:1.7">'+
+        '<b>的中</b>=通常（朱）/ <b style="color:#7a7f88">銀の的中＋🌸</b>=万馬券(1万〜)/ <b style="color:#7a5c00">金の的中＋💮</b>=10万馬券(10万〜)（配当で自動）<br>'+
+        '★会心=ABC完璧に噛み合った / 妙味的中=ミスプライス軸が来た / 鉄板=Type2本線で堅く / 大穴=人気薄を読んで高配当 / どてん=逆張り的中<br>'+
+        '🛡好判断=見送って正解 / 💧取りこぼし=見送ったが実は的中'+
+      '</div>'+
+    '</div>'+
+    '<div style="font-size:10px;color:'+FAINT+';margin-top:4px">※各内訳は該当フィールドを持つ勝負レコードのみ集計。母数nが小さい間は暫定値。</div>'+
+  '</div>';
+  return btn.replace('📊 分析を開く（Type/馬場/距離別ROI）','▲ 分析を閉じる')+panel;
 }
 
 function render(){
@@ -193,25 +364,41 @@ function render(){
     '</div>'+
   '</div>';
 
+  var analysis=renderAnalysis(s);
+
   var err=state.err?'<div class="errbar">'+esc(state.err)+'</div>':'';
 
+  var typeOpts=[["all","Type: 全部"],["1","Type1 堅い妙味なし"],["2","Type2 堅い軸+妙味"],["3","Type3 割れ複数妙味"],["4","Type4 上位堅い順不明"],["none","Type未設定"]];
+  var typeSel='<select onchange="setType(this.value)" style="background:var(--greenD);border:1px solid var(--greenD);color:var(--paper);padding:6px 10px;font-family:var(--mono);font-weight:800;font-size:12px">'+
+    typeOpts.map(function(o){return '<option value="'+o[0]+'"'+(state.typeFilter===o[0]?" selected":"")+'>'+o[1]+'</option>';}).join("")+'</select>';
+  var catSel='<select onchange="setCat(this.value)" style="background:var(--paper);border:1px solid var(--rule);color:var(--greenD);padding:6px 10px;font-family:var(--mono);font-weight:700;font-size:12px">'+
+    catOptions().map(function(o){return '<option value="'+o[0]+'"'+(state.catFilter===o[0]?" selected":"")+'>'+o[1]+'</option>';}).join("")+'</select>';
   var toolbar=state.editing===null?
     '<div class="toolbar">'+
       '<button class="btn-solid" onclick="startNew()">＋ 新規購入控</button>'+
       '<div class="filters">'+
         filt("all","全部")+filt("hot","🔥勝負")+filt("pending","結果待ち")+
       '</div>'+
-    '</div>':'';
+    '</div>'+
+    '<div style="margin:-6px 0 12px;display:flex;gap:8px;flex-wrap:wrap">'+typeSel+catSel+'</div>':'';
 
   var pasteHtml=state.pasteOpen?renderPaste():'';
   var formHtml=state.editing!==null?renderForm():'';
 
   var shown=state.races.filter(function(r){
-    return state.filter==="all"?true:state.filter==="hot"?r.hot:r.resultStatus==="pending";
+    var base=state.filter==="all"?true:state.filter==="hot"?r.hot:r.resultStatus==="pending";
+    return base && catMatch(r) && typeMatch(r);
   });
-  var list=shown.length?shown.map(renderRace).join(""):'<div class="empty">該当する券なし。「新規購入控」から記録しよか。</div>';
+  var totalShown=shown.length;
+  var visible=shown.slice(0,state.limit);
+  var list=totalShown?visible.map(renderRace).join(""):'<div class="empty">該当する券なし。「新規購入控」から記録しよか。</div>';
+  if(totalShown>state.limit){
+    list+='<div style="text-align:center;margin:14px 0 6px"><button onclick="showMore()" style="background:'+GOLDL+';color:#fff;border:none;padding:10px 22px;font-family:var(--mono);font-weight:800;font-size:13px;letter-spacing:.05em">もっと見る（残り'+(totalShown-state.limit)+'件）</button></div>';
+  } else if(totalShown>20){
+    list+='<div style="text-align:center;margin:14px 0 6px"><button onclick="showLess()" style="background:transparent;color:'+GOLDL+';border:1px solid '+GOLDL+';padding:8px 18px;font-family:var(--mono);font-weight:700;font-size:12px">▲ 最新20件に戻す</button></div>';
+  }
 
-  app.innerHTML=header+err+pasteHtml+toolbar+formHtml+list+
+  app.innerHTML=header+analysis+err+pasteHtml+toolbar+formHtml+list+
     '<input type="file" id="imp" accept="application/json,.json" style="display:none" onchange="importFile(event)">';
 }
 function stat(l,v,color){return '<div class="stat"><div class="l">'+l+'</div><div class="v"'+(color?' style="color:'+color+'"':'')+'>'+v+'</div></div>';}
@@ -235,9 +422,11 @@ function renderRace(r){
       '<div style="flex:1;min-width:0">'+
         '<div class="r-date">'+esc(r.date)+' '+esc(r.track)+(r.raceNumber?' '+esc(r.raceNumber)+'R':'')+'</div>'+
         '<div class="r-name">'+esc(r.raceName)+(r.grade?'<span class="grade">'+esc(r.grade)+'</span>':'')+'</div>'+
-        '<div class="r-sub">'+esc(r.betType)+' · '+(r.hot?'勝負':'記録のみ')+'</div>'+
+        '<div class="r-sub">'+esc(r.betType)+' · '+(r.hot?'勝負':'記録のみ')+
+          (r.decisionType?' · <span style="color:'+GOLDL+';font-weight:700">'+esc(TYPE_LABEL[""+r.decisionType]||("Type"+r.decisionType))+'</span>':'')+
+        '</div>'+
       '</div>'+
-      resultBadge(r.resultStatus)+
+      resultBadge(r)+
       '<span style="color:'+FAINT+'">'+(isOpen?'▲':'▼')+'</span>'+
     '</div>';
 
@@ -250,6 +439,11 @@ function renderRace(r){
     var judgeHtml=j.length?'<div><div class="cap">判定（自動）</div><div class="chips">'+j.map(chip).join("")+'</div></div>':'';
     var plansHtml='<div class="plans">'+planCol("Ａ データ基準",a)+planCol("Ｂ 実績・能力",b)+planCol("Ｃ チャート軸",c)+'</div>';
     var fields="";
+    if(r.decisionType)fields+=field("決着タイプ","<span style=\"color:"+GOLDL+";font-weight:700\">"+esc(TYPE_LABEL[""+r.decisionType]||("Type"+r.decisionType))+"</span>");
+    var sd=[];
+    if(r.surface)sd.push(r.surface==="turf"?"芝":"ダート");
+    if(r.distance)sd.push(r.distance+"m");
+    if(sd.length)fields+=field("条件",sd.join(" / "));
     if(r.trackCondition)fields+=field("馬場",r.trackCondition);
     if(r.mispriceNote)fields+=field("ミスプライス軸メモ",r.mispriceNote);
     fields+='<div class="two">'+field("買い目",esc(r.betType)+" / "+(esc(r.betCombos)||"—")+" / "+yen(r.betAmount))+
@@ -297,11 +491,26 @@ function renderForm(){
       '<textarea style="height:54px" placeholder="ミスプライス軸メモ（実力序列 vs オッズの乖離）" oninput="setF(\'mispriceNote\',this.value)">'+v("mispriceNote")+'</textarea>'+
       '<label class="chk"><input type="checkbox"'+(f.hot?' checked':'')+' onchange="setF(\'hot\',this.checked)"> 🔥 熱いレース（実際に賭ける／集計対象）</label>'+
       '<div class="grid4">'+
-        '<select onchange="setF(\'betType\',this.value)">'+sel("betType",["三連複","三連単","ワイド","複数併用"])+'</select>'+
+        '<select onchange="setF(\'betType\',this.value)">'+sel("betType",["単勝","複勝","枠連","馬連","馬単","ワイド","三連複","三連単","複数併用"])+'</select>'+
         '<input placeholder="買い目" value="'+v("betCombos")+'" oninput="setF(\'betCombos\',this.value)">'+
         '<input type="number" placeholder="賭け金¥" value="'+v("betAmount")+'" oninput="setF(\'betAmount\',this.value)">'+
       '</div>'+
       '<div class="grid4" style="border-top:1px dashed var(--rule);padding-top:12px">'+
+        '<select onchange="setF(\'decisionType\',this.value===\'\'?null:parseInt(this.value,10))">'+
+          '<option value=""'+(f.decisionType==null?" selected":"")+'>決着Type(任意)</option>'+
+          '<option value="1"'+(f.decisionType===1?" selected":"")+'>Type1 堅い・妙味なし</option>'+
+          '<option value="2"'+(f.decisionType===2?" selected":"")+'>Type2 堅い軸+妙味</option>'+
+          '<option value="3"'+(f.decisionType===3?" selected":"")+'>Type3 割れ・複数妙味</option>'+
+          '<option value="4"'+(f.decisionType===4?" selected":"")+'>Type4 上位堅い順番不明</option>'+
+        '</select>'+
+        '<select onchange="setF(\'surface\',this.value)">'+
+          '<option value=""'+(!f.surface?" selected":"")+'>馬場(任意)</option>'+
+          '<option value="dirt"'+(f.surface==="dirt"?" selected":"")+'>ダート</option>'+
+          '<option value="turf"'+(f.surface==="turf"?" selected":"")+'>芝</option>'+
+        '</select>'+
+        '<input type="number" placeholder="距離m(任意)" value="'+v("distance")+'" oninput="setF(\'distance\',this.value===\'\'?\'\':parseInt(this.value,10))">'+
+      '</div>'+
+      '<div class="grid4">'+
         '<input placeholder="着順 例:5-8-7" value="'+v("resultOrder")+'" oninput="setF(\'resultOrder\',this.value)">'+
         '<select onchange="setF(\'resultStatus\',this.value)">'+
           '<option value="pending"'+(f.resultStatus==="pending"?" selected":"")+'>結果待ち</option>'+
@@ -310,6 +519,7 @@ function renderForm(){
         '</select>'+
         '<input type="number" placeholder="配当¥" value="'+v("payout")+'" oninput="setF(\'payout\',this.value)">'+
       '</div>'+
+      awardSelector(f)+
       '<textarea style="height:54px" placeholder="メモ・反省（買い目設計の良し悪しと結果は分けて）" oninput="setF(\'memo\',this.value)">'+v("memo")+'</textarea>'+
       '<div class="actions">'+
         '<button class="btn-solid" onclick="saveForm()">💾 保存</button>'+
@@ -319,7 +529,7 @@ function renderForm(){
 }
 
 /* ===== アクション ===== */
-function setFilter(k){state.filter=k;render();}
+function setFilter(k){state.filter=k;state.limit=20;render();}
 function toggle(id){state.open=state.open===id?null:id;render();}
 function startNew(){state.form=blank();state.editing="new";state.open=null;state.err="";render();}
 function startEdit(id){var r=state.races.filter(function(x){return x.id===id;})[0];
@@ -389,27 +599,61 @@ function renderPaste(){
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
       '<b style="color:var(--greenD);font-size:13px">JSON取込（貼り付け）</b>'+
       '<button onclick="closePaste()" style="background:none;border:none;color:'+FAINT+';font-size:18px">✕</button></div>'+
-    '<textarea id="pastebox" style="height:130px" placeholder="Claudeがくれたデータをここに貼り付け" oninput="setPaste(this.value)"></textarea>'+
+    '<textarea id="pastebox" style="height:130px" placeholder="Claudeがくれたデータをここに貼り付け" oninput="setPaste(this.value)">'+esc(state.pasteText||"")+'</textarea>'+
     '<div class="hint" style="margin:6px 0 10px">同じidの券は上書き、新規は追加。</div>'+
     '<button class="btn-solid" onclick="doPaste()">取り込む</button></div>';
+}
+/* 貼り付けJSONの自動修復。よくある壊れ方を無害化してからparseを試みる */
+function tryParseRepair(raw){
+  // 1) まず素で試す
+  try{return JSON.parse(raw);}catch(e){}
+  var t=raw;
+  // 2) 前後のコードフェンスや余計なテキストを除去(最初の{か[から最後の}か]まで)
+  var s=t.search(/[\{\[]/), e=Math.max(t.lastIndexOf("}"),t.lastIndexOf("]"));
+  if(s>=0&&e>s){t=t.slice(s,e+1);}
+  // 3) 全角引用符・全角カンマ・全角コロンを半角へ
+  t=t.replace(/[“”]/g,'"').replace(/[，、]/g,",").replace(/：/g,":");
+  // 4) 文字列値の中に紛れた「生の改行」をエスケープ済み\nに変換
+  //    (JSONは文字列内の生改行を許さない。ダブルクオート内だけ対象にする)
+  var out="",inStr=false,prev="";
+  for(var i=0;i<t.length;i++){
+    var ch=t[i];
+    if(ch==='"'&&prev!=="\\"){inStr=!inStr;out+=ch;prev=ch;continue;}
+    if(inStr&&(ch==="\n"||ch==="\r")){out+="\\n";prev=ch;continue;}
+    out+=ch;prev=ch;
+  }
+  t=out;
+  // 5) 末尾カンマ除去  ,}  ,]
+  t=t.replace(/,\s*([\}\]])/g,"$1");
+  // 6) オブジェクト間の欠落カンマを補う  }{ → },{
+  t=t.replace(/\}\s*\{/g,"},{");
+  try{return JSON.parse(t);}catch(e2){throw e2;}
 }
 function doPaste(){
   var txt=(state.pasteText||"").trim();
   if(!txt){return;}
+  var parsed;
   try{
-    var parsed=JSON.parse(txt);
+    parsed=tryParseRepair(txt);
+  }catch(e){
+    alert("取込失敗：JSONを直せませんでした。\n"+(e&&e.message?e.message:"")+"\n\nうまくいかない時は『ファイルから読込』を使うと確実です。");
+    return;
+  }
+  try{
     if(!Array.isArray(parsed))parsed=[parsed];
     var byId={};state.races.forEach(function(r){byId[r.id]=r;});
+    var added=0;
     parsed.forEach(function(p){
+      if(!p||typeof p!=="object")return;
       var rec=Object.assign(blank(),p);
       if(!rec.id)rec.id=""+Date.now()+Math.floor(Math.random()*1000);
-      byId[rec.id]=rec;
+      byId[rec.id]=rec;added++;
     });
     state.races=Object.keys(byId).map(function(k){return byId[k];})
       .sort(function(x,y){return x.date<y.date?1:-1;});
     save();state.pasteOpen=false;state.pasteText="";render();
-    alert("取込完了（"+parsed.length+"件）");
-  }catch(e){alert("取込失敗：JSON形式を確認してな。");}
+    alert("取込完了（"+added+"件）");
+  }catch(e3){alert("取込失敗：データ形式を確認してな。");}
 }
 
 /* 起動 */
