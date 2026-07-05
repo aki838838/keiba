@@ -201,6 +201,8 @@ function typeMatch(r){
 }
 function setCat(v){state.catFilter=v;state.limit=20;render();}
 function setType(v){state.typeFilter=v;state.limit=20;render();}
+function showMore(){state.limit+=20;render();}
+function showLess(){state.limit=20;render();}
 function catOptions(){
   // 記録がある競馬場だけ動的に
   var tracks={};state.races.forEach(function(r){if(r.track)tracks[r.track]=1;});
@@ -446,8 +448,8 @@ function renderRace(r){
     if(sd.length)fields+=field("条件",sd.join(" / "));
     if(r.trackCondition)fields+=field("馬場",r.trackCondition);
     if(r.mispriceNote)fields+=field("ミスプライス軸メモ",r.mispriceNote);
-    fields+='<div class="two">'+field("買い目",esc(r.betType)+" / "+(esc(r.betCombos)||"—")+" / "+yen(r.betAmount))+
-            field("結果",(esc(r.resultOrder)||"—")+" / 配当 "+yen(r.payout))+'</div>';
+    fields+=field("買い目",esc(r.betType)+" / "+(esc(r.betCombos)||"—")+" / "+yen(r.betAmount))+
+            field("結果",(esc(r.resultOrder)||"—")+" / 配当 "+yen(r.payout));
     if(r.memo)fields+=field("メモ・反省",r.memo);
     body='<div class="body">'+alerts+judgeHtml+plansHtml+fields+barcode()+
       '<div class="actions">'+
