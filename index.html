@@ -105,7 +105,11 @@ function load(){
   }catch(e){state.races=SEED.slice();}
 }
 function save(){
-  try{localStorage.setItem(KEY,JSON.stringify(state.races));state.err="";return true;}
+  try{
+    localStorage.setItem(KEY,JSON.stringify(state.races));
+    try{var c=parseInt(localStorage.getItem("abc-dirty")||"0",10)+1;localStorage.setItem("abc-dirty",""+c);}catch(e2){}
+    state.err="";return true;
+  }
   catch(e){state.err="保存に失敗。容量超過かプライベートモードかも。『ファイルに書き出し』でバックアップを。";return false;}
 }
 
@@ -157,7 +161,24 @@ function stats(){
 }
 
 /* 切り口別ROI集計。keyFnがnull/空を返すレコードは除外(補完しない) */
-function breakdown(keyFn,labelFn){
+function backupBanner(){
+  var dirty=parseInt(localStorage.getItem("abc-dirty")||"0",10);
+  var last=parseInt(localStorage.getItem("abc-last-export")||"0",10);
+  var need=false,why="";
+  if(!last){
+    if(state.races.length>10){need=true;why="バックアップ未実施（"+state.races.length+"件保存中）";}
+  }else{
+    var days=Math.floor((Date.now()-last)/86400000);
+    if(dirty>=20){need=true;why="最終バックアップから"+dirty+"件更新";}
+    else if(days>=14&&dirty>0){need=true;why="最終バックアップから"+days+"日経過";}
+  }
+  if(!need)return "";
+  return '<div style="background:#fdf3d1;border:1px solid #d4af37;color:#6a5200;font-size:12px;line-height:1.6;padding:10px 12px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+    '<span>⚠ '+why+'。JSON書き出しを推奨。</span>'+
+    '<button onclick="exportFile()" style="background:#d4af37;color:#fff;border:none;padding:6px 14px;font-family:var(--mono);font-weight:800;font-size:12px">今すぐ書き出す</button>'+
+  '</div>';
+}
+function breakdown(keyFn,labelFn,sortFn){
   var placed=state.races.filter(function(r){return r.hot&&r.resultStatus!=="pending";});
   var groups={};
   placed.forEach(function(r){
@@ -170,7 +191,7 @@ function breakdown(keyFn,labelFn){
     g.inv+=(parseFloat(r.betAmount)||0);
     if(r.resultStatus==="hit"){g.hits++;g.ret+=(parseFloat(r.payout)||0);}
   });
-  return Object.keys(groups).sort(function(a,b){
+  return Object.keys(groups).sort(sortFn||function(a,b){
     var na=parseFloat(a),nb=parseFloat(b);
     if(!isNaN(na)&&!isNaN(nb))return na-nb; // 数値キー(距離等)は数値順
     return a<b?-1:a>b?1:0;                  // それ以外は辞書順
@@ -318,6 +339,33 @@ function renderAnalysis(s){
   var byType=breakdown(function(r){return r.decisionType;},function(k){return TYPE_LABEL[k]||("Type"+k);});
   var bySurface=breakdown(function(r){return r.surface;},function(k){return k==="dirt"?"ダート":k==="turf"?"芝":k;});
   var byDist=breakdown(function(r){return r.distance;},function(k){return k+"m";});
+  var byMonth=breakdown(
+    function(r){return (r.date||"").slice(0,7);},
+    function(k){return k.slice(0,4)+"年"+parseInt(k.slice(5),10)+"月";},
+    function(a,b){return a<b?1:a>b?-1:0;} // 新しい月が上
+  );
+
+  // 見送り精度と称号内訳
+  var gp=0,tk=0,hitAw={kaishin:0,myomi:0,teppan:0,ooana:0,doten:0};
+  state.races.forEach(function(r){
+    if(r.award==="good_pass")gp++;
+    else if(r.award==="torikoboshi")tk++;
+    else if(r.award&&hitAw.hasOwnProperty(r.award))hitAw[r.award]++;
+  });
+  var passHtml;
+  if(gp+tk===0){passHtml='<span style="color:'+FAINT+'">見送り記録なし</span>';}
+  else{
+    var rate=Math.round(gp/(gp+tk)*100);
+    var rc=rate>=70?GREEN:rate>=50?GOLDL:RED;
+    passHtml='<b style="color:'+rc+'">'+rate+'%</b>（🛡好判断'+gp+' / 💧取りこぼし'+tk+'）';
+  }
+  var awParts=[];
+  if(hitAw.kaishin)awParts.push("★会心"+hitAw.kaishin);
+  if(hitAw.myomi)awParts.push("妙味"+hitAw.myomi);
+  if(hitAw.teppan)awParts.push("鉄板"+hitAw.teppan);
+  if(hitAw.ooana)awParts.push("大穴"+hitAw.ooana);
+  if(hitAw.doten)awParts.push("どてん"+hitAw.doten);
+  var awHtml=awParts.length?awParts.join(" / "):'<span style="color:'+FAINT+'">的中称号なし</span>';
 
   var panel='<div class="ticket" style="padding:16px 16px 12px">'+
     '<div class="pl-l" style="margin-bottom:4px">診断ボード</div>'+
@@ -329,6 +377,12 @@ function renderAnalysis(s){
     bdBlock("決着タイプ別ROI",byType)+
     bdBlock("馬場別ROI",bySurface)+
     bdBlock("距離別ROI",byDist)+
+    bdBlock("月別ROI",byMonth)+
+    '<div style="border-top:1px dashed var(--rule);margin-top:6px;padding-top:8px;margin-bottom:8px">'+
+      '<div class="pl-l" style="margin-bottom:6px">見送り精度（盤面診断の検証）</div>'+
+      '<div style="font-size:12px;color:var(--ink);line-height:1.7">'+passHtml+'</div>'+
+      '<div style="font-size:11px;color:var(--ink);line-height:1.7">的中称号内訳: '+awHtml+'</div>'+
+    '</div>'+
     '<div style="border-top:1px dashed var(--rule);margin-top:6px;padding-top:8px">'+
       '<div class="pl-l" style="margin-bottom:6px">スタンプ凡例</div>'+
       '<div style="font-size:10.5px;color:var(--ink);line-height:1.7">'+
@@ -348,6 +402,7 @@ function render(){
   var roiColor=s.roiNum>=100&&!s.invZero?RED:"var(--greenD)";
 
   var header=
+  backupBanner()+
   '<div class="ticket" style="padding:22px 20px 18px">'+
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">'+
       '<div style="min-width:0"><div class="kicker">ABC ANALYSIS · 勝馬予想控</div>'+
@@ -356,6 +411,7 @@ function render(){
         '<button class="btn-ghost" onclick="exportFile()">ファイルに書き出し</button>'+
         '<button class="btn-ghost" onclick="openPaste()">取込（貼り付け）</button>'+
         '<button class="btn-ghost" onclick="document.getElementById(\'imp\').click()">ファイルから読込</button>'+
+        '<button class="btn-ghost" onclick="copySchema()">📋 出力指示をコピー</button>'+
       '</div>'+
     '</div>'+
     '<div class="dash"></div>'+
@@ -454,6 +510,7 @@ function renderRace(r){
     body='<div class="body">'+alerts+judgeHtml+plansHtml+fields+barcode()+
       '<div class="actions">'+
         '<button class="btn-ghost" onclick="startEdit(\''+r.id+'\')">編集</button>'+
+        '<button class="btn-ghost" onclick="exportOne(\''+r.id+'\')">JSON</button>'+
         '<button class="btn-ghost" style="color:'+RED+';border-color:transparent" onclick="del(\''+r.id+'\')">🗑 削除</button>'+
       '</div></div>';
   }
@@ -557,6 +614,74 @@ function del(id){
   if(state.open===id)state.open=null;
   save();render();
 }
+function copySchema(){
+  var s=[
+    "競馬ABC予想の記録を自作アプリ(スタンドアロンHTML/localStorage)に取り込むJSONを出力して。下記スキーマに厳密に合わせること。",
+    "",
+    "{",
+    '  "id": "ユニーク文字列(例: morioka-20260629-12r)",',
+    '  "date": "YYYY-MM-DD",',
+    '  "track": "競馬場名",',
+    '  "raceNumber": "数字のみの文字列(例: 12)",',
+    '  "raceName": "レース名",',
+    '  "grade": "クラス・グレード(例: B1)",',
+    '  "trackCondition": "馬場状態(例: 良)",',
+    '  "surface": "dirt または turf",',
+    '  "distance": "距離の数値(メートル整数)。不明なら空文字",',
+    '  "decisionType": "決着タイプ 1〜4 の整数。判定不能なら null",',
+    '  "a": "馬番:馬名:人気を改行区切り",',
+    '  "b": "同上",',
+    '  "c": "同上",',
+    '  "mispriceNote": "ミスプライス軸メモ",',
+    '  "hot": true,',
+    '  "betType": "単勝/複勝/枠連/馬連/馬単/ワイド/三連複/三連単/複数併用 のいずれか",',
+    '  "betCombos": "買い目の文字列",',
+    '  "betAmount": "金額の文字列(例: 800)",',
+    '  "resultOrder": "着順の文字列(例: 5-7-12)",',
+    '  "resultStatus": "hit / miss / pending のいずれか(英語必須)",',
+    '  "payout": "配当の文字列。無ければ空文字",',
+    '  "award": "的中時 kaishin/myomi/teppan/ooana/doten、見送り時 good_pass/torikoboshi、無ければ空文字",',
+    '  "memo": "反省メモ。冒頭は Type○(日本語ラベル)。 で始める"',
+    "}",
+    "",
+    "ルール:",
+    "・a b c の馬リストは 馬番:馬名:人気 を改行(\\n)区切りの文字列(配列にしない)。人気は任意",
+    "・hot のみ boolean。distance と decisionType は数値/null 可。他は文字列",
+    "・resultStatus は必ず hit/miss/pending の英語3択",
+    "・decisionType対応: 1=堅い妙味なし / 2=堅い軸+妙味 / 3=割れ複数妙味 / 4=上位堅い順番不明",
+    "・memo冒頭は Type2(堅い軸+妙味)。 のように 番号+日本語ラベル で始める",
+    "・award対応: kaishin=会心 myomi=妙味的中 teppan=鉄板 ooana=大穴 doten=どてん good_pass=見送り好判断 torikoboshi=取りこぼし。該当なければ空文字",
+    "・award は指定しない限り空。勝手に付けない",
+    "・特殊記号(★【】→=)は値に入れない。末尾カンマ禁止",
+    "・出力はJSONオブジェクトのみ。前置き不要。複数レースは配列で出す"
+  ].join("\n");
+  function done(ok){alert(ok?"出力指示をコピーしたで。別チャットのClaudeに貼り付けたら、このアプリ用のJSONを出してくれる。":"コピーに失敗。下の文を長押しで手動コピーしてな。\n\n"+s);}
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(s).then(function(){done(true);},function(){done(false);});
+    }else{
+      var ta=document.createElement("textarea");ta.value=s;document.body.appendChild(ta);ta.select();
+      var ok=false;try{ok=document.execCommand("copy");}catch(e){}
+      document.body.removeChild(ta);done(ok);
+    }
+  }catch(e){done(false);}
+}
+function exportOne(id){
+  var r=state.races.filter(function(x){return x.id===id;})[0];
+  if(!r)return;
+  var json=JSON.stringify(r);
+  function done(ok){alert(ok?"このレース1件のJSONをコピーしたで。別チャットや取込に貼り付けできる。":"コピーに失敗。長押しで手動コピーしてな。\n\n"+json);}
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(json).then(function(){done(true);},function(){done(false);});
+    }else{
+      // フォールバック: 一時textareaでコピー
+      var ta=document.createElement("textarea");ta.value=json;document.body.appendChild(ta);ta.select();
+      var ok=false;try{ok=document.execCommand("copy");}catch(e){}
+      document.body.removeChild(ta);done(ok);
+    }
+  }catch(e){done(false);}
+}
 
 /* ===== ファイル入出力（スマホのストレージ） ===== */
 function exportFile(){
@@ -567,7 +692,9 @@ function exportFile(){
   var d=new Date();var stamp=d.getFullYear()+("0"+(d.getMonth()+1)).slice(-2)+("0"+d.getDate()).slice(-2);
   a.href=url;a.download="競馬ABC記録_"+stamp+".json";
   document.body.appendChild(a);a.click();document.body.removeChild(a);
+  try{localStorage.setItem("abc-last-export",""+Date.now());localStorage.setItem("abc-dirty","0");}catch(e){}
   setTimeout(function(){URL.revokeObjectURL(url);},1000);
+  render();
 }
 function importFile(ev){
   var file=ev.target.files[0];if(!file)return;
