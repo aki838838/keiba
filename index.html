@@ -41,14 +41,17 @@
   .row-head{display:flex;align-items:center;gap:12px;padding:16px 16px 14px;cursor:pointer;}
   .r-date{font-size:10px;color:var(--green);letter-spacing:.15em;margin-bottom:3px;}
   .r-name{font-size:16px;font-weight:800;color:var(--greenD);font-family:var(--sans);}
-  .r-sub{font-size:11px;color:var(--faint);margin-top:3px;}
+  .r-sub{font-size:10.5px;color:var(--faint);margin-top:4px;}
+  .r-sub-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+  .r-sub-row+.r-sub-row{margin-top:4px;}
+  .tag{font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;white-space:nowrap;letter-spacing:.02em;line-height:1.6;}
   .grade{font-size:12px;color:var(--faint);margin-left:6px;}
   .hit{color:var(--red);font-weight:800;font-size:13px;border:2px solid var(--red);border-radius:4px;padding:2px 8px;transform:rotate(-7deg);letter-spacing:.1em;}
   .stamp{font-weight:800;border-radius:5px;transform:rotate(-7deg);letter-spacing:.1em;white-space:nowrap;display:inline-block;}
   .stamp-man{font-size:13px;padding:2px 8px;color:#7a7f88;border:2px solid #9aa0aa;background:linear-gradient(135deg,#f4f5f7,#d8dbe0,#f4f5f7);}
   .stamp-10man{font-size:13px;padding:2px 8px;color:#7a5c00;border:2px solid #d4af37;background:linear-gradient(135deg,#fff8dc,#f5d97a,#fff8dc);box-shadow:0 0 6px rgba(212,175,55,.7);}
-  .hanamaru{font-size:22px;line-height:1;}
-  .hanamaru-lux{font-size:30px;line-height:1;filter:drop-shadow(0 0 3px rgba(212,175,55,.9));}
+  .hanamaru{font-size:18px;line-height:1;}
+  .hanamaru-lux{font-size:26px;line-height:1;filter:drop-shadow(0 0 3px rgba(212,175,55,.9));}
   .stamprow{display:flex;align-items:center;gap:4px;}
   .award{font-size:10px;font-weight:800;border-radius:3px;padding:1px 6px;letter-spacing:.05em;white-space:nowrap;display:inline-block;}
   .stampwrap{display:flex;flex-direction:column;gap:3px;align-items:flex-end;}
@@ -92,11 +95,11 @@ var KEY="abc-races";
 function blank(){return{id:"",date:"",track:"",raceNumber:"",raceName:"",grade:"",trackCondition:"",
   a:"",b:"",c:"",mispriceNote:"",hot:false,betType:"三連複",betCombos:"",betAmount:"",
   resultOrder:"",resultStatus:"pending",payout:"",memo:"",
-  decisionType:null,surface:"",distance:"",award:""};}
+  decisionType:null,surface:"",distance:"",award:"",axisNums:"",axisIn3:""};}
 
 var SEED=[];
 
-var state={races:[],filter:"all",editing:null,form:blank(),open:null,err:"",pasteOpen:false,pasteText:"",analysisOpen:false,catFilter:"all",typeFilter:"all",limit:20};
+var state={races:[],filter:"all",editing:null,form:blank(),open:null,err:"",pasteOpen:false,pasteText:"",analysisOpen:false,catFilter:"all",typeFilter:"all",schemaOpen:false,schemaText:"",limit:20};
 
 function load(){
   try{var raw=localStorage.getItem(KEY);
@@ -154,10 +157,43 @@ function stats(){
   var ret=hits.reduce(function(s,r){return s+(parseFloat(r.payout)||0);},0);
   // トリガミ=的中だが払戻<投資
   var trigami=hits.filter(function(r){return (parseFloat(r.payout)||0) < (parseFloat(r.betAmount)||0);}).length;
+  // 軸集計: axisNumsが空のレース(軸不在)は分母から除外
+  var axisRaces=placed.filter(function(r){return axisList(r).length>0;});
+  var axisHitRaces=axisRaces.filter(function(r){return (parseInt(r.axisIn3,10)||0)>0;});
+  var axisTotalHorses=axisRaces.reduce(function(s,r){return s+axisList(r).length;},0);
+  var axisIn3Horses=axisRaces.reduce(function(s,r){return s+(parseInt(r.axisIn3,10)||0);},0);
+  var axisAbsent=placed.length-axisRaces.length;
   return{total:state.races.length,placed:placed.length,hits:hits.length,
     hitRate:placed.length?Math.round(hits.length/placed.length*100)+"%":"—",
     roi:inv?Math.round(ret/inv*100)+"%":"—",pl:ret-inv,invZero:inv===0,roiNum:inv?ret/inv*100:0,
-    trigami:trigami};
+    trigami:trigami,
+    axisN:axisRaces.length,axisHitN:axisHitRaces.length,
+    axisRate:axisRaces.length?Math.round(axisHitRaces.length/axisRaces.length*100)+"%":"—",
+    axisRateNum:axisRaces.length?axisHitRaces.length/axisRaces.length*100:0,
+    axisHorses:axisTotalHorses,axisIn3Horses:axisIn3Horses,
+    axisHorseRate:axisTotalHorses?Math.round(axisIn3Horses/axisTotalHorses*100)+"%":"—",
+    axisAbsent:axisAbsent};
+}
+/* 券に出す軸タグ。軸あり→「軸 1/2」、軸不在→「軸不在」、結果待ち/未記入→非表示 */
+function axisTag(r){
+  var list=axisList(r);
+  if(list.length===0){
+    if(r.hot&&r.resultStatus!=="pending"&&(r.axisNums!==undefined))
+      return '<span class="tag" style="color:'+FAINT+';background:rgba(124,132,120,.10)">軸予想なし</span>';
+    return "";
+  }
+  if(r.resultStatus==="pending"||r.axisIn3===""||r.axisIn3===null||r.axisIn3===undefined)
+    return '<span class="tag" style="color:'+FAINT+';background:rgba(124,132,120,.10)">軸予想'+list.length+'頭</span>';
+  var n=parseInt(r.axisIn3,10)||0;
+  var col=n>0?GREEN:RED;
+  var bg=n>0?"rgba(10,107,60,.10)":"rgba(166,51,42,.10)";
+  return '<span class="tag" style="color:'+col+';background:'+bg+'">軸予想 '+n+'/'+list.length+'</span>';
+}
+/* 軸馬番を配列で返す。"11,12" や "11 12" を許容。空なら[] */
+function axisList(r){
+  var v=(r.axisNums==null?"":""+r.axisNums).trim();
+  if(!v)return [];
+  return v.split(/[,、\s\/]+/).filter(function(x){return x!=="";});
 }
 
 /* 切り口別ROI集計。keyFnがnull/空を返すレコードは除外(補完しない) */
@@ -202,6 +238,7 @@ function breakdown(keyFn,labelFn,sortFn){
   });
 }
 var TYPE_LABEL={"1":"Type1（堅い・妙味なし）","2":"Type2（堅い軸＋妙味）","3":"Type3（割れ・複数妙味）","4":"Type4（上位堅い・順番不明）"};
+var TYPE_SHORT={"1":"T1 堅い","2":"T2 堅軸+妙味","3":"T3 割れ","4":"T4 順不同"};
 var JRA_TRACKS=["札幌","函館","福島","新潟","東京","中山","中京","京都","阪神","小倉"];
 function isJRA(r){return JRA_TRACKS.indexOf(r.track)>=0;}
 function isStakes(r){var g=(r.grade||"");return /G[1-3ⅠⅡⅢ]|Jpn|重賞/i.test(g);}
@@ -379,6 +416,17 @@ function renderAnalysis(s){
     bdBlock("距離別ROI",byDist)+
     bdBlock("月別ROI",byMonth)+
     '<div style="border-top:1px dashed var(--rule);margin-top:6px;padding-top:8px;margin-bottom:8px">'+
+      '<div class="pl-l" style="margin-bottom:6px">軸精度（ABCのコア検証）</div>'+
+      (s.axisN?
+        '<div style="font-size:12px;color:var(--ink);line-height:1.8">'+
+          'レース単位: <b style="color:'+(s.axisRateNum>=50?GREEN:(s.axisRateNum>=30?GOLDL:RED))+';font-size:14px">'+s.axisRate+'</b>'+
+          ' <span style="color:'+FAINT+'">（軸が3着内に来たレース '+s.axisHitN+' / '+s.axisN+'）</span><br>'+
+          '頭単位: <b>'+s.axisHorseRate+'</b> <span style="color:'+FAINT+'">（3着内 '+s.axisIn3Horses+' / 宣言軸 '+s.axisHorses+'頭）</span>'+
+          (s.axisAbsent?'<br><span style="color:'+FAINT+'">軸不在レース '+s.axisAbsent+'件は分母から除外</span>':'')+
+        '</div>'
+        :'<div style="font-size:11px;color:'+FAINT+'">軸の記録なし（軸馬番を入れた勝負レコードが無い）</div>')+
+    '</div>'+
+    '<div style="border-top:1px dashed var(--rule);margin-top:6px;padding-top:8px;margin-bottom:8px">'+
       '<div class="pl-l" style="margin-bottom:6px">見送り精度（盤面診断の検証）</div>'+
       '<div style="font-size:12px;color:var(--ink);line-height:1.7">'+passHtml+'</div>'+
       '<div style="font-size:11px;color:var(--ink);line-height:1.7">的中称号内訳: '+awHtml+'</div>'+
@@ -411,13 +459,15 @@ function render(){
         '<button class="btn-ghost" onclick="exportFile()">ファイルに書き出し</button>'+
         '<button class="btn-ghost" onclick="openPaste()">取込（貼り付け）</button>'+
         '<button class="btn-ghost" onclick="document.getElementById(\'imp\').click()">ファイルから読込</button>'+
-        '<button class="btn-ghost" onclick="copySchema()">📋 出力指示をコピー</button>'+
+        '<button class="btn-ghost" onclick="openSchema()">📋 出力指示</button>'+
       '</div>'+
     '</div>'+
     '<div class="dash"></div>'+
     '<div class="stats">'+
       stat("記録",s.total)+stat("勝負数",s.placed)+stat("的中",s.hits,RED)+
-      stat("的中率",s.hitRate)+stat("回収率",s.roi,roiColor)+
+      stat("的中率",s.hitRate)+
+      stat("軸的中率",s.axisRate,s.axisN?(s.axisRateNum>=50?GREEN:(s.axisRateNum>=30?GOLDL:RED)):FAINT)+
+      stat("回収率",s.roi,roiColor)+
       stat("収支",s.placed?(s.pl>=0?"+":"")+s.pl.toLocaleString():"—",plColor)+
     '</div>'+
   '</div>';
@@ -456,7 +506,7 @@ function render(){
     list+='<div style="text-align:center;margin:14px 0 6px"><button onclick="showLess()" style="background:transparent;color:'+GOLDL+';border:1px solid '+GOLDL+';padding:8px 18px;font-family:var(--mono);font-weight:700;font-size:12px">▲ 最新20件に戻す</button></div>';
   }
 
-  app.innerHTML=header+analysis+err+pasteHtml+toolbar+formHtml+list+
+  app.innerHTML=header+analysis+err+schemaPanel()+pasteHtml+toolbar+formHtml+list+
     '<input type="file" id="imp" accept="application/json,.json" style="display:none" onchange="importFile(event)">';
 }
 function stat(l,v,color){return '<div class="stat"><div class="l">'+l+'</div><div class="v"'+(color?' style="color:'+color+'"':'')+'>'+v+'</div></div>';}
@@ -480,8 +530,12 @@ function renderRace(r){
       '<div style="flex:1;min-width:0">'+
         '<div class="r-date">'+esc(r.date)+' '+esc(r.track)+(r.raceNumber?' '+esc(r.raceNumber)+'R':'')+'</div>'+
         '<div class="r-name">'+esc(r.raceName)+(r.grade?'<span class="grade">'+esc(r.grade)+'</span>':'')+'</div>'+
-        '<div class="r-sub">'+esc(r.betType)+' · '+(r.hot?'勝負':'記録のみ')+
-          (r.decisionType?' · <span style="color:'+GOLDL+';font-weight:700">'+esc(TYPE_LABEL[""+r.decisionType]||("Type"+r.decisionType))+'</span>':'')+
+        '<div class="r-sub">'+
+          '<div class="r-sub-row">'+
+            '<span>'+esc(r.betType)+' · '+(r.hot?'勝負':'記録のみ')+'</span>'+
+            axisTag(r)+
+          '</div>'+
+          (r.decisionType?'<div class="r-sub-row"><span class="tag" style="color:'+GOLDL+';background:rgba(154,123,22,.10)">'+esc(TYPE_LABEL[""+r.decisionType]||("Type"+r.decisionType))+'</span></div>':'')+
         '</div>'+
       '</div>'+
       resultBadge(r)+
@@ -569,6 +623,10 @@ function renderForm(){
         '</select>'+
         '<input type="number" placeholder="距離m(任意)" value="'+v("distance")+'" oninput="setF(\'distance\',this.value===\'\'?\'\':parseInt(this.value,10))">'+
       '</div>'+
+      '<div class="grid4" style="border-top:1px dashed var(--rule);padding-top:12px">'+
+        '<input placeholder="軸の馬番 例:11,12" value="'+v("axisNums")+'" oninput="setF(\'axisNums\',this.value)">'+
+        '<input type="number" placeholder="軸の3着内数" value="'+v("axisIn3")+'" oninput="setF(\'axisIn3\',this.value)">'+
+      '</div>'+
       '<div class="grid4">'+
         '<input placeholder="着順 例:5-8-7" value="'+v("resultOrder")+'" oninput="setF(\'resultOrder\',this.value)">'+
         '<select onchange="setF(\'resultStatus\',this.value)">'+
@@ -614,8 +672,8 @@ function del(id){
   if(state.open===id)state.open=null;
   save();render();
 }
-function copySchema(){
-  var s=[
+function defaultSchema(){
+  return [
     "競馬ABC予想の記録を自作アプリ(スタンドアロンHTML/localStorage)に取り込むJSONを出力して。下記スキーマに厳密に合わせること。",
     "",
     "{",
@@ -637,26 +695,50 @@ function copySchema(){
     '  "betType": "単勝/複勝/枠連/馬連/馬単/ワイド/三連複/三連単/複数併用 のいずれか",',
     '  "betCombos": "買い目の文字列",',
     '  "betAmount": "金額の文字列(例: 800)",',
+    '  "axisNums": "宣言した軸の馬番をカンマ区切り(例: 11,12)。軸不在なら空文字",',
+    '  "axisIn3": "軸のうち3着内に来た頭数の整数(例: 1)。軸不在なら空文字",',
     '  "resultOrder": "着順の文字列(例: 5-7-12)",',
     '  "resultStatus": "hit / miss / pending のいずれか(英語必須)",',
     '  "payout": "配当の文字列。無ければ空文字",',
     '  "award": "的中時 kaishin/myomi/teppan/ooana/doten、見送り時 good_pass/torikoboshi、無ければ空文字",',
-    '  "memo": "反省メモ。冒頭は Type○(日本語ラベル)。 で始める"',
+    '  "memo": "反省メモ。冒頭は Type○(日本語ラベル)。軸=馬番／3着内 n/m。 で始める"',
     "}",
     "",
     "ルール:",
     "・a b c の馬リストは 馬番:馬名:人気 を改行(\\n)区切りの文字列(配列にしない)。人気は任意",
     "・hot のみ boolean。distance と decisionType は数値/null 可。他は文字列",
+    "・hot は実際に馬券を買ったかだけで決める。memoに見送るべきだった等の反省があっても、買い目とbetAmountがあるなら hot:true",
     "・resultStatus は必ず hit/miss/pending の英語3択",
     "・decisionType対応: 1=堅い妙味なし / 2=堅い軸+妙味 / 3=割れ複数妙味 / 4=上位堅い順番不明",
-    "・memo冒頭は Type2(堅い軸+妙味)。 のように 番号+日本語ラベル で始める",
+    "・memo冒頭は Type2(堅い軸+妙味)。軸=11,12／3着内 1/2。 のように Type番号+日本語ラベル+軸情報 で始める",
+    "・axisNums と axisIn3 は memo の軸情報と必ず一致させる。床が席しか指定できず軸を名指しできないレースは軸不在として両方空文字",
     "・award対応: kaishin=会心 myomi=妙味的中 teppan=鉄板 ooana=大穴 doten=どてん good_pass=見送り好判断 torikoboshi=取りこぼし。該当なければ空文字",
     "・award は指定しない限り空。勝手に付けない",
     "・特殊記号(★【】→=)は値に入れない。末尾カンマ禁止",
     "・出力はJSONオブジェクトのみ。前置き不要。複数レースは配列で出す",
     "・JSONは必ずコピーボタン付きのコードブロックで出力すること"
   ].join("\n");
-  function done(ok){alert(ok?"出力指示をコピーしたで。別チャットのClaudeに貼り付けたら、このアプリ用のJSONを出してくれる。":"コピーに失敗。下の文を長押しで手動コピーしてな。\n\n"+s);}
+}
+function getSchema(){
+  var saved=localStorage.getItem("abc-schema");
+  return (saved!==null&&saved!=="")?saved:defaultSchema();
+}
+function openSchema(){state.schemaOpen=true;state.schemaText=getSchema();render();}
+function closeSchema(){state.schemaOpen=false;render();}
+function setSchemaText(v){state.schemaText=v;}
+function saveSchema(){
+  try{localStorage.setItem("abc-schema",state.schemaText||"");}catch(e){}
+  alert("指示文を保存したで。次からこの内容が出る。");
+  render();
+}
+function resetSchema(){
+  if(!confirm("初期の指示文に戻す？書き足した分は消えるで。"))return;
+  try{localStorage.removeItem("abc-schema");}catch(e){}
+  state.schemaText=defaultSchema();render();
+}
+function copySchema(){
+  var s=state.schemaOpen?(state.schemaText||""):getSchema();
+  function done(ok){alert(ok?"出力指示をコピーしたで。別チャットのClaudeに貼り付けたら、このアプリ用のJSONを出してくれる。":"コピーに失敗。長押しで手動コピーしてな。");}
   try{
     if(navigator.clipboard&&navigator.clipboard.writeText){
       navigator.clipboard.writeText(s).then(function(){done(true);},function(){done(false);});
@@ -666,6 +748,22 @@ function copySchema(){
       document.body.removeChild(ta);done(ok);
     }
   }catch(e){done(false);}
+}
+function schemaPanel(){
+  if(!state.schemaOpen)return "";
+  return '<div class="ticket" style="padding:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<b style="color:var(--greenD);font-size:13px">出力指示（編集できる）</b>'+
+      '<button class="btn-ghost" style="font-size:11px;padding:4px 10px" onclick="closeSchema()">閉じる</button>'+
+    '</div>'+
+    '<div style="font-size:11px;color:'+FAINT+';line-height:1.6;margin-bottom:8px">下に行を書き足せる。保存すれば次回からこの内容でコピーされる。</div>'+
+    '<textarea style="width:100%;height:260px;box-sizing:border-box;font-family:var(--mono);font-size:11px;line-height:1.6" oninput="setSchemaText(this.value)">'+esc(state.schemaText||"")+'</textarea>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+
+      '<button class="btn-solid" onclick="copySchema()">📋 コピー</button>'+
+      '<button class="btn-ghost" onclick="saveSchema()">💾 保存</button>'+
+      '<button class="btn-ghost" style="color:'+RED+'" onclick="resetSchema()">初期に戻す</button>'+
+    '</div>'+
+  '</div>';
 }
 function exportOne(id){
   var r=state.races.filter(function(x){return x.id===id;})[0];
